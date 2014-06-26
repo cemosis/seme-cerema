@@ -1,0 +1,21 @@
+myh=0.5;//0.1;
+Point(1) = {0, 0, 0, myh};
+Point(2) = {5, 0, 0, myh};
+Point(3) = {5, 1, 0, myh};
+Point(4) = {0, 1, 0, myh};
+Line(1) = {4, 1};
+Line(2) = {2, 1};
+Line(3) = {2, 3};
+Line(4) = {3, 4};
+Line Loop(5) = {4, 1, -2, 3};
+Plane Surface(6) = {5};
+Transfinite Line {1,3} = 1./myh+1;// Using Progression 1.0;
+Transfinite Line {2,4} = 5./myh+1;// Using Progression 1.0;
+Transfinite Surface {6} = {1,2,3,4};
+Recombine Surface {6};
+
+Physical Line("bordX") = {2};
+Physical Line("bordY") = {1};
+Physical Line("bordXBis") = {4};
+Physical Line("bordYBis") = {3};
+Physical Surface("Omega") = {6};
