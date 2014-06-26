@@ -1,0 +1,65 @@
+\documentclass[french]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{alltt}
+\usepackage{textcomp}
+\usepackage{mathrsfs}
+\usepackage{stmaryrd}
+\usepackage{subfig}
+\usepackage{listings}
+\usepackage{pgf}
+\usepackage{graphicx}
+\usepackage{enumitem}
+
+\usepackage{tikz}
+\usetikzlibrary{calc,arrows,patterns,plotmarks,shapes,snakes,er,3d,automata,backgrounds,topaths,trees,petri,mindmap}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+
+%%% For code c++ environment
+\definecolor{blue_code}{RGB}{106, 90, 205}
+\definecolor{grey_comment}{RGB}{105, 105, 105}
+\lstset{
+language = c++,
+basicstyle = \footnotesize,
+numberstyle = \footnotesize,
+aboveskip=\smallskipamount,
+showspaces=false,
+showstringspaces=false,
+backgroundcolor=\color{blue_code!20},
+commentstyle=\color{grey_comment},
+morecomment=[l]{//},
+frame = single
+}
+%%%%
+\usetheme{CambridgeUS}
+
+\title[SEME 2014 - cerema 2]{Utilisation de l'équation de transport pour la prévision du bruit}
+\subtitle{Vers un nouveau modèle d'acoustique du batiment}
+
+\author[shortname]{author1 \inst{1} \and author2 \inst{2}}
+\institute[shortinst]{\inst{1} affiliation for author1 \and %
+                      \inst{2} affiliation for author2}
+
+\titlegraphic{\includegraphics[width=4cm]{Figures/logo-cerema.jpg} }
+
+\AtBeginSubsection[]{
+   \begin{frame}
+   \tableofcontents[currentsection,currentsubsection]
+   \end{frame} 
+}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\input{cecile}
+
+\end{document}
