@@ -10,7 +10,8 @@
 \usepackage{textcomp}
 \usepackage{mathrsfs}
 \usepackage{stmaryrd}
-\usepackage{subfig}
+%\usepackage{subfig}
+\usepackage{subfigure}
 \usepackage{listings}
 \usepackage{pgf}
 \usepackage{graphicx}
@@ -24,18 +25,48 @@
 %%% For code c++ environment
 \definecolor{blue_code}{RGB}{106, 90, 205}
 \definecolor{grey_comment}{RGB}{105, 105, 105}
+
+\usepackage{filecontents,listings}
+\lstset{language=c++,showspaces=false,showstringspaces=false,captionpos=t,literate={>>}{\ensuremath{>>}}1,mathescape}
+\lstset{basicstyle=\small\bf\ttfamily}
+\lstset{lineskip=-2pt}
+
+%\lstset{emph={inline},emphstyle=\color{red}\bfseries}
+
+\definecolor{cgreen}{rgb}{0.,0.6,0.0}
+
+\definecolor{violet}{rgb}{0.5,0,0.5}
+\definecolor{vertfonce}{rgb}{0.,0.5,0.}
+\definecolor{rouge}{rgb}{0.5,0.,0.}
+\definecolor{bleu}{rgb}{0.,0.,1}
+\definecolor{orange}{rgb}{1,0.5,0}
+\lstset{keywordstyle=\color{red}\bfseries}
 \lstset{
-language = c++,
-basicstyle = \footnotesize,
-numberstyle = \footnotesize,
-aboveskip=\smallskipamount,
-showspaces=false,
-showstringspaces=false,
-backgroundcolor=\color{blue_code!20},
-commentstyle=\color{grey_comment},
-morecomment=[l]{//},
-frame = single
+emph={form,form1,form2,integrate,on,grad,gradt,dot,id,dx,dy,dz,idt,dxt,dyt,dzt,idv,dxv,dy,dzv,gradv,div,divt,divv,dn,jump,trans,vec,cst,
+  project,P,Px,Py,Pz,one,oneX,oneY,oneZ,hFace,N,Nx,Ny,Nz,sin,cos,min,max,abs,pow,chi,exp,LinearForm,BilinearForm,MixedLinearForm,MixedBilinearForm,
+  FESpace,MixedFESpace,integrate,project,addCL},emphstyle=\color{bleu},
+emph={[2]\_space,\_range,\_expr,\_quad,\_quad1,\_test,\_trial,\_matrix,\_vector,\_solution,\_element,\_rhs,\_rowstart,\_colstart,\_block,
+  \_pattern,\_pattern\_block,\_domainSpace,\_imageSpace,\_mesh,\_name,\_partitions,\_worldcomm,\_worldscomm,
+  \_type,\_marker1,\_marker2,\_marker3,\_marker4,\_marker5,\_marker6,\_marker7,\_marker8,\_markerAll,\_argc,\_argv,\_desc},emphstyle={[2]\color{violet}\bfseries},
+emph={[3]elements,markerName,boundaryfaces,markedfaces,\_Q,solve, newMatrix,newVector,newZeroMatrix,newZeroVector,
+  newBlockMatrix,newBlockVector,localize,element,apply,createMesh,localSize,subWorldComm,transpose,setMarker,add,save,
+  dirichlet\_vec,neumann\_scal,updateTime,exportResults,updateBdf,init,FluidMechanics}, emphstyle={[3]\color{rouge}\bfseries},
+emph={[4]Backend,BlocksVector,BlocksSparseMatrix,BlocksStencilPattern,Blocks,opInterpolation,FunctionSpace,Lagrange,bases,Pch,unitSquare,WorldComm,
+  Mesh,Simplex,Node,Rectangle,Quadrangle,Circle,AppliManagement,Environment,feel\_options,exporter},emphstyle={[4]\color{orange}\bfseries},
+emph={[5]size\_type,uint16\_type},emphstyle={[5]\color{red}\bfseries},
+emph={[6]GeoTool,vf,cl},emphstyle={[6]\color{cyan}\bfseries}
 }
+
+
+\lstset{commentstyle=\ttfamily\color{cgreen}}
+\lstset{numberstyle=\tiny}
+%\lstset{backgroundcolor=\color{lbcolor},rulecolor=}
+
+\lstset{frame=single,framerule=0.5pt}
+\lstset{belowskip=\smallskipamount}
+\lstset{aboveskip=\smallskipamount}
+\lstset{includerangemarker=false,rangeprefix=\/\/\#\ ,% curly left brace plus space
+  rangesuffix=\ \#}
 %%%%
 \usetheme{CambridgeUS}
 
@@ -61,5 +92,7 @@ frame = single
 \end{frame}
 
 \input{cecile}
+
+\input{implementation}
 
 \end{document}
