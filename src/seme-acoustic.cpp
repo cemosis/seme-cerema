@@ -63,10 +63,13 @@ int main(int argc, char**argv )
         ( "center_y", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
         ( "center_z", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
         ( "radius", po::value<double>()->default_value( 0.1 ), "alpha coeff" )
+        ( "vel0", po::value<double>()->default_value( 5 ), "vel0" )
+        ( "vel1", po::value<double>()->default_value( 0 ), "vel1" )
+        ( "nvel", po::value<int>()->default_value( 1 ), "nvel" )
 		;
 
 	Environment env( _argc=argc, _argv=argv,
-                     _desc=accousticoptions.add(feel_options()),
+                     _desc=accousticoptions.add(feel_options()).add(backend_options("prec0")).add(backend_options("prec1")),
                      _about=about(_name="seme-acoustic",
                                   _author="Feel++ Consortium",
                                   _email="feelpp-devel@feelpp.org"));
@@ -253,7 +256,9 @@ int main(int argc, char**argv )
 #endif
     //-----------------------------------------------------------------//
     // export initial solution
-    auto e = exporter( _mesh=mesh,_name="myexporter" );
+
+    auto e2 = exporter( _mesh=mesh,_name="myexporter2" );
+    auto e3 = exporter( _mesh=mesh,_name="myexporter" );
 #if 0
     //e->step(0)->add( "ULoc", *ULoc );
     for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
@@ -279,7 +284,7 @@ int main(int argc, char**argv )
 
     //-----------------------------------------------------------------//
     //vitesse de propagation
-    std::vector<double> vDirection(nDim,0.);
+    std::vector<std::vector<double>> vDirection(Xh_thetaPhi->nDof(),std::vector<double>(nDim,0.));
     // ???
     double vStrange = doption(_name="sound-velocity");//1;
 
@@ -377,17 +382,18 @@ int main(int argc, char**argv )
     std::vector<boost::shared_ptr<Backend<double> > > mybackends(Xh_thetaPhi->nDof(),backend(_rebuild=true));
 
 
-
-    // time loop
-    for ( double time=timeStep ; time<timeFinal ; time+=timeStep )
-    {
-        std::cout << "time " << time << "\n";
-
-        for( size_type dof_thetaPhi=0; dof_thetaPhi<2/*Xh_thetaPhi->nDof()*/; ++dof_thetaPhi)
+    //for( size_type dof_thetaPhi=0; dof_thetaPhi<ioption("nvel")/*Xh_thetaPhi->nDof()*/; ++dof_thetaPhi)
+    ULocSumAllDirection->zero();
+    int N = (ioption("nvel" )==0)?Xh_thetaPhi->nDof():ioption("nvel" );
+    //for( size_type dof_thetaPhi=0; dof_thetaPhi<Xh_thetaPhi->nDof(); ++dof_thetaPhi)
+    for( size_type dof_thetaPhi=0; dof_thetaPhi<N; ++dof_thetaPhi)
         {
-            mat->zero();
-            rhs->zero();
-            USol->zero();
+            auto rhs = backend()->newVector( Xh->nDof(), Xh->nDof() );/*nDofX*nDofY*/
+            auto USol = backend()->newVector( Xh->nDof(), Xh->nDof() );
+            auto mat = backend()->newMatrix(Xh,Xh);
+            //mat->zero();
+            //rhs->zero();
+           //USol->zero();
             //rhs = backend()->newVector( Xh->nDof(), Xh->nDof() );
             //auto mat2 = backend()->newMatrix(Xh,Xh);
             //auto rhs2 = backend()->newVector( Xh->nDof(), Xh->nDof() );
@@ -395,26 +401,43 @@ int main(int argc, char**argv )
             auto mat2 = mat;
             auto rhs2 = rhs;
             auto USol2 = USol;
+            auto mstr = (boost::format("mat%1%.m")%dof_thetaPhi).str();
+            auto str = (boost::format("myexporter%1%")%dof_thetaPhi).str();
+            auto e1 = exporter( _mesh=mesh,_name=str );
 
-#if 0
-            vDirection[0] = vx_proj->operator()(dof_thetaPhi);
+    // time loop
+    for ( double time=timeStep ; time<timeFinal ; time+=timeStep )
+    {
+        std::cout << "time " << time << "\n";
+
+
+        if ( ioption("nvel" ) == 0 )
+        {
+            vDirection[dof_thetaPhi][0] = vx_proj->operator()(dof_thetaPhi);
             if( nDim >= 2 )
-                vDirection[1] = vy_proj->operator()(dof_thetaPhi);
+                vDirection[dof_thetaPhi][1] = vy_proj->operator()(dof_thetaPhi);
             if( nDim == 3 )
-                vDirection[2] = vz_proj->operator()(dof_thetaPhi);
-#endif
-            vDirection[0] = ( dof_thetaPhi==0 )?8:-5;
-            vDirection[1] = 0;
-            vDirection[2] = 0;
-
-            std::cout << "vDirection[0] " << vDirection[0] << " vDirection[1] " << vDirection[1] << " vDirection[2] " << vDirection[2] << "\n";
+                vDirection[dof_thetaPhi][2] = vz_proj->operator()(dof_thetaPhi);
+        }
+        else
+        {
+            //vDirection[0] = ( dof_thetaPhi==0 )?8:0;
+            //if ( (dof_thetaPhi == 0) && (time < 2*timeStep+1e-6))
+            if ( (dof_thetaPhi ==  0 ))
+                vDirection[dof_thetaPhi][0] = doption("vel0");
+            else
+                vDirection[dof_thetaPhi][0] =  doption("vel1");
+            vDirection[dof_thetaPhi][1] = 0;
+            vDirection[dof_thetaPhi][2] = 0;
+        }
+            std::cout << "vDirection[0] " << vDirection[dof_thetaPhi][0] << " vDirection[1] " << vDirection[dof_thetaPhi][1] << " vDirection[2] " << vDirection[dof_thetaPhi][2] << "\n";
 
             std::vector<bool> dofdone(Xh->nDof(),false);
             for ( auto const& face : boundaryfaces(mesh) )
             {
                 ctx->update( face.element0(), face.pos_first() );
                 auto unitNormal = ctx->unitNormal();
-                double valVdotN = vDirection[0]*unitNormal[0]+ vDirection[1]*unitNormal[1] + vDirection[2]*unitNormal[2];
+                double valVdotN = vDirection[dof_thetaPhi][0]*unitNormal[0]+ vDirection[dof_thetaPhi][1]*unitNormal[1] + vDirection[dof_thetaPhi][2]*unitNormal[2];
 #if 0
                 std::cout << "face id " << face.id() << "normal " << face.element0().normal(face.pos_first())
                           <<  " ctx->normal(0) " << ctx->unitNormal()//ctx->normal()
@@ -500,24 +523,24 @@ int main(int argc, char**argv )
 
                         // grad term
 #if 1
-                        double valGradX = vDirection[0]/(2*meshSizeX);
+                        double valGradX = vDirection[dof_thetaPhi][0]/(2*meshSizeX);
                         mat2->add( thedof, thedof-1, -valGradX );
                         mat2->add( thedof, thedof+1, valGradX );
                         if ( nDim>=2 )
                         {
-                            double valGradY = vDirection[1]/(2*meshSizeY);
+                            double valGradY = vDirection[dof_thetaPhi][1]/(2*meshSizeY);
                             mat2->add( thedof, thedof-nDofX, -valGradY );
                             mat2->add( thedof, thedof+nDofX, valGradY );
                         }
                         if ( nDim==3 )
                         {
-                            double valGradZ = vDirection[2]/(2*meshSizeZ);
+                            double valGradZ = vDirection[dof_thetaPhi][2]/(2*meshSizeZ);
                             mat2->add( thedof, thedof-nDofX*nDofY, -valGradZ );
                             mat2->add( thedof, thedof+nDofX*nDofY, valGradZ );
                         }
 
 #else
-                        double valGrad = vDirection[0]/(meshSizeX);
+                        double valGrad = vDirection[dof_thetaPhi][0]/(meshSizeX);
                         //mat2->add( i, i-1, -valGrad );
                         mat2->add( i, i, -valGrad );
                         mat2->add( i, i+1, valGrad );
@@ -529,8 +552,8 @@ int main(int argc, char**argv )
                             double valDiff = rho*std::min(meshSizeX,meshSizeY);
                             for(int i_dim=0; i_dim<nDim; ++i_dim)
                             {
-                                if( std::abs(vDirection[i_dim]) > 1e-5 ) //if( v[i_dim] != 0)
-                                    valDiff *= vDirection[i_dim];
+                                if( std::abs(vDirection[dof_thetaPhi][i_dim]) > 1e-5 ) //if( v[i_dim] != 0)
+                                    valDiff *= vDirection[dof_thetaPhi][i_dim];
                             }
                             double valDiffX = valDiff/std::pow(meshSizeX,2);
                             double valDiffY = valDiff/std::pow(meshSizeY,2);
@@ -558,9 +581,26 @@ int main(int argc, char**argv )
                     } // k
                 } // j
             } // i
+            if ( 0 )
+            {
+                mat->printMatlab(mstr);
 
-            //backend(_rebuild=true)->solve(_matrix=mat, _rhs=rhs, _solution=USol );
-            mybackends[dof_thetaPhi]->solve(_matrix=mat2, _rhs=rhs2, _solution=USol2 );
+
+                auto pstr = (boost::format("prec%1%")%dof_thetaPhi).str();
+                auto b = backend(_rebuild=true,_name=pstr);
+                auto p=preconditioner( _prefix=pstr,_matrix=mat,_pc=b->pcEnumType()/*LU_PRECOND*/,
+                                       _pcfactormatsolverpackage=b->matSolverPackageEnumType(), _backend=b, _rebuild = true );
+                b->solve(_matrix=mat, _rhs=rhs, _solution=USol, _prec = p );
+                p.reset();
+                b.reset();
+            }
+            else
+            {
+                auto b = backend(_rebuild=true );
+                b->solve(_matrix=mat, _rhs=rhs, _solution=USol);
+            }
+            //mybackends[dof_thetaPhi]->solve(_matrix=mat2, _rhs=rhs2, _solution=USol2 );
+            std::cout << " rhs2->l2Norm() " << rhs2->l2Norm() << "\n";
             std::cout << " USol->l2Norm() " << USol->l2Norm() << "\n";
 
             //for ( size_type k=0;k<Xh->nDof();++k)
@@ -569,15 +609,27 @@ int main(int argc, char**argv )
             for ( size_type k=0;k<Xh->nDof();++k)
                 ULoc_thetaPhi[dof_thetaPhi]->set( mapFDtoFE[k], USol2->operator()( k ) );//mapFEtoFD,mapFDtoFE
 
-            if (dof_thetaPhi == 0 )
-            {
+            //if (dof_thetaPhi == 0 )
+            //{
                 std::cout << " do export\n";
                 //*ULoc_thetaPhi[dof_thetaPhi] = *ULoc;
                 //e->step(time)->add( "ULoc", *ULoc );
-                e->step(time)->add( (boost::format("ULoc%1%")%dof_thetaPhi).str(), *(ULoc_thetaPhi[dof_thetaPhi])/* *ULoc*/ );
-
-                e->save();
-            }
+#if 0
+                if ( dof_thetaPhi ==  0 )
+                {
+                    e1->step(time)->add( (boost::format("ULoc%1%")%dof_thetaPhi).str(), *(ULoc_thetaPhi[dof_thetaPhi])/* *ULoc*/ );
+                    e1->save();
+                }
+                if ( dof_thetaPhi ==  1 )
+                {
+                    e2->step(time)->add( (boost::format("ULoc%1%")%dof_thetaPhi).str(), *(ULoc_thetaPhi[dof_thetaPhi])/* *ULoc*/ );
+                    e2->save();
+                }
+#else
+                e1->step(time)->add( (boost::format("ULoc%1%")%dof_thetaPhi).str(), *(ULoc_thetaPhi[dof_thetaPhi])/* *ULoc*/ );
+                e1->save();
+#endif
+                //}
             //break;
         } // dof_thetaPhi
 
@@ -597,11 +649,30 @@ int main(int argc, char**argv )
             ULocSumAllDirection->set( dof, ULocSumAllDirection->operator()(dof)/Xh_thetaPhi->nDof()  );
         }
 
-        e->step( time )->add( "ULocSumAllDirection", *ULocSumAllDirection );
-        e->save();
-#endif
-    } // time loop
+        e3->step( time )->add( "ULocSumAllDirection", *ULocSumAllDirection );
+#else
+        for ( size_type dof=0;dof<Xh->nDof();++dof)
+        {
+            //size_type cptVecProp=0;
+            for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
+            {
+                //auto mythetaPhiPt = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi).get<0>();
+                //if ( mythetaPhiPt[1] >= (2*M_PI-0.00001) ) continue;
+                //++cptVecProp;
+                ULocSumAllDirection->add( dof, ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) );
+            }
+        }
 
+#endif
+        //e->save();
+
+    } // time loop
+    for ( size_type dof=0;dof<Xh->nDof();++dof)
+    {
+        ULocSumAllDirection->set( dof, ULocSumAllDirection->operator()(dof)/Xh_thetaPhi->nDof()  );
+    }
+    e3->add( "ULocSumAllDirection", *ULocSumAllDirection );
+    e3->save();
     return 0;
 
 }
