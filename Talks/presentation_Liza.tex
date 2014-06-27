@@ -1,0 +1,188 @@
+%% \documentclass[9pt,french]{beamer}
+%% \usepackage[utf8]{inputenc}
+%% \usepackage[T1]{fontenc}
+
+%% \usepackage{amsmath}
+%% \usepackage{amsfonts}
+%% \usepackage{amssymb}
+%% \usepackage{xcolor}
+%% \usepackage{alltt}
+%% \usepackage{textcomp}
+%% \usepackage{mathrsfs}
+%% \usepackage{stmaryrd}
+%% \usepackage{subfig}
+%% \usepackage{listings}
+%% \usepackage{pgf}
+%% \usepackage{graphicx}
+%% \usepackage{enumitem}
+
+%% \usepackage{tikz}
+%% \usetikzlibrary{calc,arrows,patterns,plotmarks,shapes,snakes,er,3d,automata,backgrounds,topaths,trees,petri,mindmap}
+%% \usepackage{pgfplots}
+%% \usepackage{pgfplotstable}
+
+%% %%% For code c++ environment
+%% \definecolor{blue_code}{RGB}{106, 90, 205}
+%% \definecolor{grey_comment}{RGB}{105, 105, 105}
+%% \lstset{
+%% language = c++,
+%% basicstyle = \footnotesize,
+%% numberstyle = \footnotesize,
+%% aboveskip=\smallskipamount,
+%% showspaces=false,
+%% showstringspaces=false,
+%% backgroundcolor=\color{blue_code!20},
+%% commentstyle=\color{grey_comment},
+%% morecomment=[l]{//},
+%% frame = single
+%% }
+%% %%%%
+%% \usetheme{CambridgeUS}
+
+%% \title[SEME 2014 - cerema 2]{Utilisation de l'équation de transport pour la prévision du bruit}
+%% \subtitle{Vers un nouveau modèle d'acoustique du batiment}
+
+%% \author[shortname]{author1 \inst{1} \and author2 \inst{2}}
+%% \institute[shortinst]{\inst{1} affiliation for author1 \and %
+%%                       \inst{2} affiliation for author2}
+
+%% %\titlegraphic{\includegraphics[width=4cm]{Figures/logo-cerema.jpg} }
+
+%% \AtBeginSection[]{
+%%    \begin{frame}
+%%    \tableofcontents[currentsection,hideothersubsections]
+%%    \end{frame} 
+%% }
+
+%% \begin{document}
+
+%% \begin{frame}
+%% \titlepage
+%% \end{frame}
+
+\scriptsize
+
+\begin{frame}
+\frametitle{Géometrie du problèmè : notations}
+\includegraphics[scale=0.5]{Figures/cube_seme.png}\hspace{1cm}
+\includegraphics[scale=0.45]{Figures/vitesse_seme.png}
+\end{frame}
+
+\begin{frame}
+\frametitle{Motivation}
+Y. Jing, E. W. Larsen, N. Xiang, 2010 : Cas d'un \textbf{couloir} ($L_y<<L_x$, $L_z<<L_x$)
+\begin{itemize}
+\item Décomposition $w(\textbf{r}, \theta, \phi, t)=\sum\limits_{j\in\mathbb{N}}\beta_j(y,z,\phi)w_j(x,\theta,t)$ 
+\item $\quad\Rightarrow\quad$ réduction du problème : 
+\begin{multline*}
+\frac{\partial w_{j}(x,\theta,t)}{\partial t}=-\left(\cos{\theta}\frac{\partial w_{j}(x,\theta,t)}{\partial x}+\sin{\theta}\sum\limits_{i\in\mathbb{N}}a_{ij}w_{i}(x,\theta,t)\right.\\
+\left.+\sin{\theta}\sum\limits_{i\in\mathbb{N}}b_{ij}\int\limits_{0}^{\pi}\sin^2{\theta'}w_{i}(x,\theta',t)d\theta'\right)
+-Mv w_{j}(x,\theta,t)+w^{sce}_{j}(x,\theta,t),\qquad j\in\mathbb{N}
+\end{multline*}
+\end{itemize}
+\begin{minipage}{8cm}
+\begin{itemize}
+\item Hypothèse : $\beta_j(y,z,\phi)=\beta_j(D(y,z,\phi))$,\quad $j\in\mathbb{N}$
+\end{itemize}
+\vspace{1.5cm}
+\end{minipage}
+\hspace{0.5cm}
+\begin{minipage}{3cm}
+\includegraphics[scale=0.3]{Figures/D_seme.png}
+\end{minipage}
+
+Trouver une décomposition pour une \textbf{salle homogène}
+\begin{itemize}
+\item en espace ? en vitesse ? quelle base ?
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{Décomposition en fonctions sphériques}
+On propose de décomposer la fonction $w(\textbf{r},\theta,\phi,t)$ en harmoniques sphériques $Y_{l,m}(\theta,\phi)$.
+
+Harmoniques sphériques :
+\begin{equation*}
+Y_{l,m}(\theta,\phi)=\sqrt{\frac{2l+1}{2}\frac{(l-m)!}{(l+m)!}}P_{l,m}(cos{\theta})e^{im\phi}
+\end{equation*}
+Polyn\^omes de Legendre associés :
+\begin{equation*}
+P_{l,m}(x)=(1-x^2)^{m/2}\frac{d^{m+l}}{dx^{m+l}}(x^2-1)^l, \qquad 0\leqslant m\leqslant l,
+\end{equation*}
+\begin{equation*}
+P_{l,-m}(x)=(-1)^m\frac{(l-m)!}{(l+m)!}P_{l,m}(x)
+\end{equation*}
+Décomposition de $w(\textbf{r},\theta,\phi,t)$ :
+\begin{equation}\label{decomposition}
+w(\textbf{r},\theta,\phi,t)=\sum\limits_{l\in\mathbb{N}}\sum\limits_{|m|\leqslant l}w_{l,m}(\textbf{r},t)Y_{l,m}(\theta,\phi)
+\end{equation}
+\end{frame}
+
+\begin{frame}
+\frametitle{Décomposition en harmoniques sphériques}
+Après avoir injecté (\ref{decomposition}) dans l'équation (\ref{}), en mulpipliant par $\overline{Y}_{q,p}(\theta,\phi)$ et en intégrant sur la sphère $(\theta,\phi)\in\mathbb{S}^2$ on obtient :
+
+\medskip
+\fbox{
+\begin{minipage}{0.98\textwidth}
+\begin{multline*}
+\frac{\partial w_{q,p}(\textbf{r},t)}{\partial t}=-\sum\limits_{l\in\mathbb{N}}\sum\limits_{|m|\leqslant l}\left(B^x_{qplm}\frac{\partial w_{l,m}(\textbf{r},t)}{\partial x}+B^y_{qplm}\frac{\partial w_{l,m}(\textbf{r},t)}{\partial y}+B^z_{qplm}\frac{\partial w_{l,m}(\textbf{r},t)}{\partial z}\right)\\
+-Mvw_{q,p}(\textbf{r},t)+w^{sce}_{q,p}(\textbf{r},t),\qquad \textbf{r}\in V,\quad q\in\mathbb{N},\quad |p|\leqslant q
+\end{multline*}
+\end{minipage}}
+\medskip
+
+Condition au bord multipliée par $\overline{Y}_{q,p}(\theta,\phi)$ et integrée sur la demi-sphère ${\Omega}\cdot\mathbf{n}<0$ donne :
+
+\medskip
+\fbox{
+\begin{minipage}{0.8\textwidth}
+\begin{equation*}
+\sum\limits_{l\in\mathbb{N}}\sum\limits_{|m|\leqslant l}\Gamma_{qplm}(\mathbf{r})w_{l,m}(\mathbf{r},t)=0,\qquad \mathbf{r}\in\partial V,\quad q\in\mathbb{N},\quad |p|\leqslant q
+\end{equation*}
+\end{minipage}}
+
+\medskip
+Les matrices $B^x$, $B^y$ et $B^z$ sont hermitiennes : $B^x=(B^x)^*$, $B^y=(B^y)^*$, $B^z=(B^z)^*$.
+\smallskip
+\begin{equation*}
+B^x_{qplm}=\sqrt{\frac{q^2-p^2}{4q^2-1}}\delta_{q-1,l}\delta_{p,m}+\sqrt{\frac{(q+1)^2-p^2}{4(q+1)^2-1}}\delta_{q+1,l}\delta_{p,m},
+\end{equation*}
+\end{frame}
+
+\begin{frame}
+\frametitle{Décomposition en harmoniques sphériques}
+\begin{multline*}
+B^y_{qplm}=\left(\frac{1}{\sqrt{2q-1}}\sqrt{(q+p)(q+p-1)}\delta_{q-1,l}\delta_{p-1,m}\right.\\
+-\frac{1}{\sqrt{2q-1}}\sqrt{(q-p)(q-p-1)}\delta_{q-1,l}\delta_{p+1,m}\\
+-\frac{1}{\sqrt{2q+3}}\sqrt{(q-p+2)(q-p+1)}\delta_{q+1,l}\delta_{p-1,m}\\
+\left.+\frac{1}{\sqrt{2q+3}}\sqrt{(q+p+2)(q+p+1)}\delta_{q+1,l}\delta_{p+1,m}\right)\frac{1}{2\sqrt{2q+1}},
+\end{multline*}
+\begin{multline*}
+B^z_{qplm}=\frac{1}{2i\sqrt{2q+1}}\left(\frac{1}{\sqrt{2q-1}}\sqrt{(q+p)(q+p-1)}\delta_{q-1,l}\delta_{p-1,m}\right.\\
++\frac{1}{\sqrt{2q-1}}\sqrt{(q-p)(q-p-1)}\delta_{q-1,l}\delta_{p+1,m}\\
+-\frac{1}{\sqrt{2q+3}}\sqrt{(q-p+2)(q-p+1)}\delta_{q+1,l}\delta_{p-1,m}\\
+\left.-\frac{1}{\sqrt{2q+3}}\sqrt{(q+p+2)(q+p+1)}\delta_{q+1,l}\delta_{p+1,m}\right).
+\end{multline*}
+\end{frame}
+\begin{frame}
+\frametitle{Décomposition en harmoniques sphériques}
+Sur la frontière $y=0$ :
+\begin{multline*}
+\Gamma^{y=0}_{qplm}=\frac{\sin{\left((m-p)\pi/2\right)}}{m-p}T_{qplm}-R(1-s)(-1)^m\frac{\sin{((m+p)\pi/2)}}{m+p}T_{qplm}+\\
+(-1)^m\frac{2s}{\pi}\frac{\sin{(p\pi/2)}}{p}\frac{\cos{(m\pi/2)}}{m^2-1}Q_{qp}\\
+\times\left(Q_{l+1,m+1}\sqrt{\frac{(l+m+2)(l+m+1)}{(2l+3)(2l+1)}}-Q_{l-1,m+1}\sqrt{\frac{(l-m-1)(l-m)}{(2l-1)(2l+1)}}\right).
+\end{multline*}
+
+où
+
+\begin{equation*}
+T_{qplm}=\frac{1}{4\pi}\sqrt{(2q+1)(2l+1)}\sqrt{\frac{(q-p)!}{(q+p)!}\frac{(l-m)!}{(l+m)!}}\int\limits_{-1}^1P^p_q(x)P^m_l(x)dx,
+\end{equation*}
+\begin{equation*}
+Q_{qp}=\frac{1}{\sqrt{4\pi}}\sqrt{2q+1}\sqrt{\frac{(q-p)!}{(q+p)!}}\int\limits_{-1}^1P^p_q(x)dx.
+\end{equation*}
+\end{frame}
+%%\input{cecile}
+
+%%\end{document}

@@ -75,9 +75,7 @@ emph={[6]GeoTool,vf,cl},emphstyle={[6]\color{cyan}\bfseries}
 \title[SEME 2014 - cerema 2]{Utilisation de l'équation de transport pour la prévision du bruit}
 \subtitle{Vers un nouveau modèle d'acoustique du batiment}
 
-\author[shortname]{author1 \inst{1} \and author2 \inst{2}}
-\institute[shortinst]{\inst{1} affiliation for author1 \and %
-                      \inst{2} affiliation for author2}
+\author[cerema2]{Fernando \and Cécile Daversin \and Vincent Chabannes \and Elizaveta Vasilevskaya \and Lionel Jassionnesse}
 
 \titlegraphic{\includegraphics[width=4cm]{Figures/logo-cerema.jpg} }
 
@@ -93,8 +91,29 @@ emph={[6]GeoTool,vf,cl},emphstyle={[6]\color{cyan}\bfseries}
 \titlepage
 \end{frame}
 
+\input{modele}
+
 \input{cecile}
 
 \input{implementation}
+
+\input{presentation_Liza}
+
+\appendix
+\section<presentation>*{\appendixname}
+\subsection<presentation>*{Bibliographie}
+\begin{frame}[allowframebreaks]
+  \frametitle<presentation>{Bibliographie}
+  \begin{thebibliography}{10}
+  \beamertemplatearticlebibitems
+  % Followed by interesting articles. Keep the list short. 
+\bibitem{Jin}
+  Yun jing 
+    \newblock {\em One-dimensional transport equation models for sound energy propagation in long spaces: Theory}
+  \bibitem{Foy}
+  Cédric Foy
+    \newblock {\em Simulation de l’acoustique intérieure d’un bâtiment par la résolution numérique d’une équation de diffusion : introduction de la diffusivité aux parois}
+  \end{thebibliography}
+\end{frame}
 
 \end{document}

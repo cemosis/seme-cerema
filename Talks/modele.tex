@@ -1,0 +1,173 @@
+
+ %\documentclass{beamer}
+%\newtheorem{Theoreme}{Theorem}
+%\mode<presentation>
+%{
+ % \usetheme{Warsaw}
+  % or ...
+
+  %\setbeamercovered{transparent}
+  % or whatever (possibly just delete it)
+%}
+%\usepackage[english]{babel}
+% or whatever
+
+%\usepackage[utf8]{inputenc}
+% or whatever
+
+%\usepackage{times}
+%\usepackage[T1]{fontenc}
+% Or whatever. Note that the encoding and the font should match. If T1
+% does not look nice, try deleting the line with the fontenc.
+%\title[Utilisation de l'équation de transport pour la prévision du bruit Vers un nouveau modèle %d'acustique] % (optional, use only with long paper titles)
+%{Utilisation de l'équation de transport pour la prévision du bruit Vers un nouveau modèle %d'acustique}
+
+%\author[Groupe 1] 
+%{~ Groupe 1 \inst{1}}
+% - Give the names in the same order as the appear in the paper.
+% - Use the \inst{?} command only if the authors have different
+%   affiliation.
+%\institute[Université de Strasbourg] % (optional, but mostly needed)
+%{
+ % Université de Strasbourg
+  %}
+% - Use the \inst command only if there are several affiliations.
+% - Keep it simple, no one is interested in your street address.
+%\date[\today] % (optional, should be abbreviation of conference name)
+%{\today}
+% - Either use conference name or its abbreviation.
+% - Not really informative to the audience, more for people (including
+%   yourself) who are reading the slides online
+%\subject{ddd}
+% This is only inserted into the PDF information catalog. Can be left
+% If you have a file called "university-logo-filename.xxx", where xxx
+% is\section{Le modèle proposé}
+%\subsection{The Basic Problem That We Studied}
+
+\scriptsize
+
+\begin{frame}{Le modèle proposé}
+  % - A title should summarize the slide in an understandable fashion
+  %   for anyone how does not follow everything on the slide itself.
+\begin{itemize}
+  %\item
+   % Use \texttt{itemize} a lot.
+%\Large
+\item Le modèle proposé repose sur une equation de transport et a pour objectif de modéliser le champ sonored'un local de volume $V$ et  de surface de ses parois $S$. 
+\item
+ Le système d'équations proposé est composé respectivement d'une équation volumique modélisant   les phénomès acoustiques au sein du vlume  de la salle d'étude:
+\begin{eqnarray*}
+%\begin{cases}
+%\begin{split}
+\frac{\partial w(\vec{r},\theta,\phi,t)}{\partial t}&=& -	\vec{v} \cdot\vec{\nabla}w(\vec{r},\theta,\phi,t))-M\vec{v} w(\vec{r},\theta,\phi,t) \\
+&+&  w_{sce} (\vec{r},\theta,\phi,t) \ \ \  \vec{r}\in dV,
+\label{CHeq}
+%\end{cases}
+%\end{split}
+\end{eqnarray*}
+\end{itemize}
+La grandeur $w$ correspond à la densité d'énergie acoustique est en $W m^{-3}s$. Le terme $\vec{v}$ est la vitesse de propagation des particules (vitesse du son), $(\theta,\phi)$  donnant la direction de propagation. Le terme $M$ est un coefficient d'atténuation atmosphérique $(0\leq M \leq 1)$
+\end{frame}
+\begin{frame}{Conditions aux limites} 
+\begin{itemize}
+\item Une première condition aux limites correspond finalement(voir \cite{Foy} ) à  l'expression de l'énergie absorbée au niveau de la paroi($S$), avec $\vec{n}$ normale extérieure. 
+\end{itemize}
+\begin{equation*}
+\begin{cases}
+\begin{split}
+d_t E_{abs}(\vec{r},\theta,\phi,t)&=& (\vec{v}\cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t) 
+= \alpha(1-d) (\hat{\vec{v}} \cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t)  \\
+&+& \frac{\alpha d}{\pi} \int_{0}^{2\pi}\int_{0}^{\frac{\pi}{2}} (\frac{ \vec{v}}{\left | v \right |} \cdot \vec{n}) (\vec{v}' \cdot \vec{n})  w(\vec{r},\theta',\phi',t) \sin(\theta') \, d\theta' \,d\phi'    
+\end{split}
+\end{cases}
+\end{equation*}
+\begin{equation}
+\mbox{si}  \ \   \vec{v} \cdot \vec{n} >0, \hat{\vec{v}} \cdot \vec{n} >0, \vec{v}' \cdot \vec{n} >0, \vec{r}\in dS 
+\end{equation}
+%\begin{equation*}
+%d_t E_{abs}(\vec{r},\theta,\phi,t) = (\vec{v}\cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t)=0  
+ %\ \ \mbox{si}\   \hat{\vec{v}} \cdot \vec{n} <0, \vec{r}\in dS
+%\end{equation*}
+oú
+$\alpha$ coefficient d' absortion  $(0<\alpha<1)$ et 
+$d$ coeffiecient de difusison dans paroi ($ 0\leq d \leq 1$)
+ 
+\end{frame}
+%\end{document}
+\begin{frame}{Conditions aux limites} 
+Une seconde condition aux limites correspond finalement a l'expression de l'énergie absorbée au niveau de la paroi
+\begin{equation*}
+\begin{cases}
+\begin{split}
+d_t E_{ref}(\vec{r},\theta,\phi,t) &=& (\vec{v}\cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t) 
+ =R(1-d) (\hat{\vec{v}} \cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t) \\
+&+&
+\frac{R d}{\pi} \int_{0}^{2\pi}\int_{0}^{\frac{\pi}{2}} (\frac{ \vec{v}}{\left | v \right |} \cdot \vec{n}) (\vec{v}' \cdot \vec{n})  w(\vec{r},\theta',\phi',t) \sin(\theta') \, d\theta' \,d\phi'
+\end{split}
+\end{cases}
+\end{equation*}
+\begin{equation}
+\mbox{si}  \ \   \vec{v} \cdot \vec{n} <0, \hat{\vec{v}} \cdot \vec{n} >0, \vec{v}' \cdot \vec{n} >0, \vec{r}\in dS 
+\end{equation}
+%\begin{equation*}
+%d_t E_{abs}(\vec{r},\theta,\phi,t) = (\vec{v}\cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t)=0  
+ %\ \ \mbox{si}\   \hat{\vec{v}} \cdot \vec{n} <0, \vec{r}\in dS
+%\end{equation*}
+oú
+$R $ coefficient de réflexion  $(0<R<1)$ et 
+$d$ coeffiecient de difussion dans le paroi $( 0\leq d \leq 1)$ \\
+Par définition, on a : $R+ \alpha=1$.
+\end{frame}
+%falta solo ortografia 
+\begin{frame}
+Dans cette parte, on va travailler  avec le suivant probléme avec condtion aux limites
+\begin{eqnarray*}
+\frac{\partial w(\vec{r},\theta,\phi,t)}{\partial t}&=& -	\vec{v} \cdot\vec{\nabla}w(\vec{r},\theta,\phi,t))-M\vec{v} w(\vec{r},\theta,\phi,t) \\
+&+&  w_{sce} (\vec{r},\theta,\phi,t) \ \ \  \vec{r}\in dV,
+\end{eqnarray*}
+\begin{equation*}
+\begin{cases}
+\begin{split}
+d_t E_{ref}(\vec{r},\theta,\phi,t) &=& (\vec{v}\cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t) 
+ =R(1-d) (\hat{\vec{v}} \cdot \vec{n}) w (\vec{r},\hat{\theta},\hat{\phi},t) \\
+&+&
+\frac{R d}{\pi} \int_{0}^{2\pi}\int_{0}^{\frac{\pi}{2}} (\frac{ \vec{v}}{\left | v \right |} \cdot \vec{n}) (\vec{v}' \cdot \vec{n})  w(\vec{r},\theta',\phi',t) \sin(\theta') \, d\theta' \,d\phi'
+\end{split}
+\end{cases}
+\end{equation*}
+\begin{equation}
+\mbox{si}  \ \   \vec{v} \cdot \vec{n} <0, \hat{\vec{v}} \cdot \vec{n} >0, \vec{v}' \cdot \vec{n} >0, \vec{r}\in dS 
+\end{equation}
+\end{frame}
+%\end{document}
+\begin{frame}{Résultats connus pour un couloir}
+Dans \cite{Jin} Jing considére le suivant modéle tridimensionelle avec conditions aux limites 
+\begin{equation}
+\begin{cases}
+\begin{split}
+&& \frac{1}{c} \frac{\partial \psi}{\partial t} (r, \Omega,t) + \Omega \cdot \nabla \psi(r, \Omega,t) + M \psi (r, \Omega,t) = \frac{Q(r,t)}{4\pi}  \\
+&&0< x< L \ \ \ (y,z) \in A \\
+&& \psi(r, \Omega,t) = R \left( (1-s) \psi(r,\hat{\Omega},t) + \frac{s}{\pi} \int_{\Omega' \cdot n>0} (\Omega' \cdot n) \psi(r,\Omega',t) \, d\Omega' \right), \\
+&&0<x<L (y,z) \in \partial A, \Omega\cdot n < 0
+\end{split}
+\end{cases}
+\end{equation}
+\end{frame}
+%\end{document}
+%% \appendix
+%% \section<presentation>*{\appendixname}
+%% \subsection<presentation>*{Bibliographie}
+%% \begin{frame}[allowframebreaks]
+%%   \frametitle<presentation>{Bibliographie}
+%%   \begin{thebibliography}{10}
+%%   \beamertemplatearticlebibitems
+%%   % Followed by interesting articles. Keep the list short. 
+%% \bibitem{Jin}
+%%   Yun jing 
+%%     \newblock {\em One-dimensional transport equation models for sound energy propagation in long spaces: Theory}
+%%   \bibitem{Foy}
+%%   Cédric Foy
+%%     \newblock {\em Simulation de l’acoustique intérieure d’un bâtiment par la résolution numérique d’une équation de diffusion : introduction de la diffusivité aux parois}
+%%   \end{thebibliography}
+%% \end{frame}
+%%\end{document}
