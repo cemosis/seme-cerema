@@ -405,11 +405,15 @@ int main(int argc, char**argv )
             auto str = (boost::format("myexporter%1%")%dof_thetaPhi).str();
             auto e1 = exporter( _mesh=mesh,_name=str );
 
+        for ( size_type dof=0;dof<Xh->nDof();++dof)
+            ULoc_thetaPhi[dof_thetaPhi]->set(dof, ULoc->operator()(dof) );
     // time loop
     for ( double time=timeStep ; time<timeFinal ; time+=timeStep )
     {
         std::cout << "time " << time << "\n";
-
+        mat->zero();
+        rhs->zero();
+        USol->zero();
 
         if ( ioption("nvel" ) == 0 )
         {
