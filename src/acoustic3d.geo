@@ -1,12 +1,15 @@
-myh=0.1;//0.1;
+myh=1;//0.1;//0.1;
+xsize=12;//5;
+ysize=12;
+zsize=12;
 Point(1) = {0, 0, 0, myh};
-Point(2) = {5, 0, 0, myh};
-Point(3) = {5, 1, 0, myh};
-Point(4) = {0, 1, 0, myh};
-Point(5) = {0, 0, 1, myh};
-Point(6) = {5, 0, 1, myh};
-Point(7) = {5, 1, 1, myh};
-Point(8) = {0, 1, 1, myh};
+Point(2) = {xsize, 0, 0, myh};
+Point(3) = {xsize, ysize, 0, myh};
+Point(4) = {0, ysize, 0, myh};
+Point(5) = {0, 0, zsize, myh};
+Point(6) = {xsize, 0, zsize, myh};
+Point(7) = {xsize, ysize, zsize, myh};
+Point(8) = {0, ysize, zsize, myh};
 Line(1) = {4, 1};
 Line(2) = {2, 1};
 Line(3) = {2, 3};
@@ -38,9 +41,9 @@ Plane Surface(24) = {23};
 Surface Loop(25) = {16, 22, 6, 18, 24, 20};
 Volume(26) = {25};
 
-Transfinite Line {1,3,8,10} = 1./myh+1;// Using Progression 1.0;
-Transfinite Line {2,4,7,9} = 5./myh+1;// Using Progression 1.0;
-Transfinite Line {11,12,13,14} = 1./myh+1;// Using Progression 1.0;
+Transfinite Line {1,3,8,10} = ysize/myh+1;// Using Progression 1.0;
+Transfinite Line {2,4,7,9} = xsize/myh+1;// Using Progression 1.0;
+Transfinite Line {11,12,13,14} = zsize/myh+1;// Using Progression 1.0;
 
 Transfinite Surface {6} = {1,2,3,4};
 Recombine Surface {6};

@@ -1,5 +1,5 @@
-myhsTheta=2*Pi/(1+1);//0.1;
-myhsPhi=Pi/(1+1);//2+1
+myhsTheta=2*Pi/(4);//0.1;
+myhsPhi=Pi/(4*2);//2+1
 Point(1) = {0, 0, 0, 1};
 Point(2) = {Pi, 0, 0, 1};
 Point(3) = {Pi, 2*Pi, 0, 1};
