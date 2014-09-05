@@ -38,6 +38,7 @@ int main(int argc, char**argv )
         ( "nThetaPhi", po::value<int>()->default_value( 1000 ), "alpha coeff" )
 
 		( "do-export-foreach-sol", po::value<bool>()->default_value( false ), "coeff" )
+        ( "coupling-direction", po::value<bool>()->default_value( true ), "coeff" )
 		;
 
 	Environment env( _argc=argc, _argv=argv,
@@ -86,16 +87,14 @@ int main(int argc, char**argv )
     bool useFirstTermInBC = boption(_name="use-first-term-bc");
     bool useSecondTermInBC = boption(_name="use-second-term-bc");
     bool doExportSolForEachVecDir = boption(_name="do-export-foreach-sol");
-
+    bool couplingDirection = boption(_name="coupling-direction");
     //-----------------------------------------------------------------//
     // create FE mesh/space and 1d meshes/spaces for bases dim
     mesh_ptrtype mesh;
     space_ptrtype Xh;
     element_ptrtype ULoc,ULocSumAllDirection,ULocIntegrateAllDirection,projBCDirichlet,projSourceTerm;
 
-    //mesh_1d_ptrtype meshX,meshY,meshZ;
     mesh_2d_ptrtype mesh_thetaPhi;
-    //space_1d_ptrtype XhX, XhY,XhZ;
     space_2d_ptrtype Xh_thetaPhi;
 
     //-----------------------------------------------------------------//
@@ -106,6 +105,7 @@ int main(int argc, char**argv )
     std::set<size_type> dofToUse_thetaPhi;
     std::vector<bool> dofIsUsed_thetaPhi(Xh_thetaPhi->nDof(),true);
     std::map<size_type,size_type> mapPeriodicDof_thetaPhi;
+#if 0
     for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
     {
         auto const& mythetaPhiPt = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi).get<0>();
@@ -130,6 +130,71 @@ int main(int argc, char**argv )
             }
         }
     }
+#else
+
+    bool findThetaPhiLeft=false,findThetaPhiRight=false;
+    size_type idThetaPhiLeft = invalid_size_type_value, idThetaPhiRight = invalid_size_type_value;
+    for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
+    {
+        auto const& mythetaPhiPt = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi).get<0>();
+
+        if ( mythetaPhiPt[1] < (2*M_PI-0.00001) )
+        {
+
+            if ( std::abs( mythetaPhiPt[0] ) < 1e-9 )
+            {
+                if ( !findThetaPhiLeft )
+                {
+                    dofToUse_thetaPhi.insert(dof_thetaPhi);
+                    findThetaPhiLeft=true;
+                    idThetaPhiLeft = dof_thetaPhi;
+                }
+                else
+                {
+                    dofIsUsed_thetaPhi[dof_thetaPhi] = false;
+                    mapPeriodicDof_thetaPhi[ dof_thetaPhi ] = idThetaPhiLeft;
+                }
+            }
+            else if ( std::abs( mythetaPhiPt[0] - M_PI ) < 1e-9 )
+            {
+                if ( !findThetaPhiRight )
+                {
+                    dofToUse_thetaPhi.insert(dof_thetaPhi);
+                    findThetaPhiRight=true;
+                    idThetaPhiRight = dof_thetaPhi;
+                }
+                else
+                {
+                    dofIsUsed_thetaPhi[dof_thetaPhi] = false;
+                    mapPeriodicDof_thetaPhi[ dof_thetaPhi ] = idThetaPhiRight;
+                }
+            }
+            else
+            {
+                dofToUse_thetaPhi.insert(dof_thetaPhi);
+            }
+        }
+        else
+        {
+            dofIsUsed_thetaPhi[dof_thetaPhi] = false;
+            // search corresponding dof
+            bool hasFindPeriodicDof=false;
+            for( size_type dof_thetaPhi2=0 ; dof_thetaPhi2<Xh_thetaPhi->nDof() && !hasFindPeriodicDof ; ++dof_thetaPhi2 )
+            {
+                auto const& mythetaPhiPt2 = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi2).get<0>();
+                if ( std::abs( mythetaPhiPt[0]-mythetaPhiPt2[0] ) < 1e-9 && std::abs( mythetaPhiPt2[1] ) < 1e-9 )
+                {
+                    mapPeriodicDof_thetaPhi[ dof_thetaPhi ] = dof_thetaPhi2;
+                    hasFindPeriodicDof=true;
+                }
+            }
+        }
+
+
+
+
+    }
+#endif
 
     if ( Environment::isMasterRank() )
         std::cout << "Xh_thetaPhi->nDof : = " << Xh_thetaPhi->nDof() << std::endl;
@@ -207,6 +272,9 @@ int main(int argc, char**argv )
     else if ( nDim == 3 )
         *projSourceTerm = l2proj->operator()( sourceTerm3dExpr );
 
+    // take initial solution as source term
+    if (true)
+        *ULoc=*projSourceTerm;
 
 
     std::vector<element_ptrtype> ULoc_thetaPhi(Xh_thetaPhi->nDof() );
@@ -383,6 +451,19 @@ int main(int argc, char**argv )
     boost::shared_ptr<cont_range_type> myelts( new cont_range_type );
 
 
+    if ( Environment::isMasterRank() )
+        for( size_type dof_thetaPhi : dofToUse_thetaPhi )
+        {
+            // vecteur direction
+            vDirection[0] = vx_proj->operator()(dof_thetaPhi);
+            if( nDim >= 2 )
+                vDirection[1] = vy_proj->operator()(dof_thetaPhi);
+            if( nDim == 3 )
+                vDirection[2] = vz_proj->operator()(dof_thetaPhi);
+                std::cout << "vDirection[0] " << vDirection[0] << " vDirection[1] " << vDirection[1] << " vDirection[2] " << vDirection[2] << "\n";
+
+        }
+
     //-----------------------------------------------------------------//
     //-----------------------------------------------------------------//
     //-----------------------------------------------------------------//
@@ -413,19 +494,21 @@ int main(int argc, char**argv )
                 std::cout << "vDirection[0] " << vDirection[0] << " vDirection[1] " << vDirection[1] << " vDirection[2] " << vDirection[2] << "\n";
 
             //-----------------------------------------------------------------//
-
+            // time discretisation and source term
             form2(_test=Xh,_trial=Xh,_matrix=mat) +=
                 integrate(_range=elements(mesh),
                           _expr=myBdf[dof_thetaPhi]->polyDerivCoefficient(0)*idt(ULoc)*id(ULoc) );
 
             //auto polyDerivInTime = myBdf[dof_thetaPhi]->polyDeriv();
-            auto polyDerivInTime = bdfEnergyDensity->polyDeriv();
-            auto rhsExpr = idv(projSourceTerm)+idv(polyDerivInTime);
+            auto polyDerivInTime = (couplingDirection)? bdfEnergyDensity->polyDeriv() : myBdf[dof_thetaPhi]->polyDeriv();
+            //auto rhsExpr = idv(projSourceTerm)+idv(polyDerivInTime);
+            auto rhsExpr = idv(polyDerivInTime);
 
             form1(_test=Xh,_vector=rhs) +=
                 integrate(_range=elements(mesh),
                           _expr=rhsExpr*id(ULoc) );
 
+            // propagation term
             auto vDirExpr = vec( cst(vDirection[0]),cst(vDirection[1]),cst(vDirection[2]));
             form2(_test=Xh,_trial=Xh,_matrix=mat) +=
                 integrate(_range=elements(mesh),
@@ -605,9 +688,15 @@ int main(int argc, char**argv )
         for ( size_type dof=0;dof<Xh->nLocalDof();++dof)
         {
             // type 1 : sum all direction method
+#if 1
             for( size_type dof_thetaPhi : dofToUse_thetaPhi )
                 ULocSumAllDirection->add( dof, ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) );
             ULocSumAllDirection->set( dof, ULocSumAllDirection->operator()(dof)/dofToUse_thetaPhi.size()  );
+#else
+            for( size_type dof_thetaPhi : dofToUse_thetaPhi )
+                if ( ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) > ULocSumAllDirection->operator()( dof ) )
+                     ULocSumAllDirection->set( dof, ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) );
+#endif
 
             // type 2 : nodal projection on ThetaPhi space and integrate
             for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
