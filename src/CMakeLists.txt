@@ -3,7 +3,6 @@ feelpp_add_application( seme-acoustic
 		CFG seme-acoustic.cfg 
 		GEO
 		acoustic3d.geo
-		acoustic.geo
 		acoustic-vecpropagation.geo
 		INCLUDE_IN_ALL )
 
@@ -12,6 +11,5 @@ feelpp_add_application( seme-acoustic-fe
 		CFG seme-acoustic-fe.cfg  
 		GEO
 		acoustic3d.geo
-		acoustic.geo
 		acoustic-vecpropagation.geo
 		INCLUDE_IN_ALL )

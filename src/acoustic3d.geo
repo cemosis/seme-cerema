@@ -41,6 +41,9 @@ Plane Surface(24) = {23};
 Surface Loop(25) = {16, 22, 6, 18, 24, 20};
 Volume(26) = {25};
 
+
+/* // uncomment this to get hypercube mesh
+
 Transfinite Line {1,3,8,10} = ysize/myh+1;// Using Progression 1.0;
 Transfinite Line {2,4,7,9} = xsize/myh+1;// Using Progression 1.0;
 Transfinite Line {11,12,13,14} = zsize/myh+1;// Using Progression 1.0;
@@ -60,6 +63,7 @@ Recombine Surface {24};
 
 Transfinite Volume {26} = {1,2,3,4,5,6,7,8};
 Recombine Volume {26};
+*/
 
 Physical Line("bordX") = {2};
 Physical Line("bordY") = {1};

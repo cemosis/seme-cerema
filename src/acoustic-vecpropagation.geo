@@ -1,7 +1,10 @@
+nCellTheta=12;//4;
+nCellPhi=24;//8;//4*2;
+
+
+
 longTheta=Pi;
 longPhi=2*Pi;
-nCellTheta=4;
-nCellPhi=8;//4*2;
 myhsTheta=longTheta/(nCellTheta);//0.1;
 myhsPhi=longPhi/(nCellPhi);//2+1
 
