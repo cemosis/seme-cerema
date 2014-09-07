@@ -1,5 +1,5 @@
-nCellTheta=12;//4;
-nCellPhi=24;//8;//4*2;
+nCellTheta=4;//12;//4;
+nCellPhi=8;//24;//8;//4*2;
 
 
 

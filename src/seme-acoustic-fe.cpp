@@ -18,19 +18,22 @@ int main(int argc, char**argv )
 {
 	po::options_description accousticoptions( "Accoustic options" );
 	accousticoptions.add_options()
-		( "time-step", po::value<double>()->default_value( 0.1 ), "coeff" )
-		( "time-final", po::value<double>()->default_value( 0.1 ), "coeff" )
-		( "scaling-coeff", po::value<double>()->default_value( 5. ), "coeff" )
+		//( "time-step", po::value<double>()->default_value( 0.1 ), "time step" )
+		//( "time-final", po::value<double>()->default_value( 0.1 ), "time final" )
+
 		( "coeff.M", po::value<double>()->default_value( 0.01 ), "coeff" )
         ( "coeff.alpha", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
         ( "coeff.d-prob", po::value<double>()->default_value( 0.5 ), "d coeff" )
         ( "sound-velocity", po::value<double>()->default_value( 343 ), "alpha coeff" )
+
 		( "stab", po::value<bool>()->default_value( true ), "coeff" )
 		( "stab-rho", po::value<double>()->default_value( 0.25 ), "coeff" )
         ( "gmsh.filename-thetaPhi", po::value<std::string>(), "name for theta phi mesh" )
+
 		( "use-first-term-bc", po::value<bool>()->default_value( true ), "coeff" )
 		( "use-second-term-bc", po::value<bool>()->default_value( true ), "coeff" )
 
+		( "scaling-coeff", po::value<double>()->default_value( 5. ), "coeff" )
         ( "center_x", po::value<double>()->default_value( 1 ), "alpha coeff" )
         ( "center_y", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
         ( "center_z", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
@@ -42,7 +45,7 @@ int main(int argc, char**argv )
 
         ( "extrapolation.use-bdf", po::value<bool>()->default_value( false ), "coeff" )
 
-        ( "dof_thetaPhi" , po::value<int>()->default_value( 0 ), "coeff" )
+        //( "dof_thetaPhi" , po::value<int>()->default_value( 0 ), "coeff" )
         ( "specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
 
         ( "air-density", po::value<double>()->default_value( 1.225 ), "air-density [kg/m^3]" )
@@ -84,8 +87,8 @@ int main(int argc, char**argv )
     typedef boost::shared_ptr<element_2d_type> element_2d_ptrtype;
 
 
-    double timeStep = doption(_name="time-step");
-    double timeFinal = doption(_name="time-final");
+    //double timeStep = doption(_name="time-step");
+    //double timeFinal = doption(_name="time-final");
     double doStab = boption(_name="stab");
     double rho = doption(_name="stab-rho");
     double M = doption(_name="coeff.M");
@@ -123,7 +126,7 @@ int main(int argc, char**argv )
     if ( !Environment::isMasterRank() )
     {
         std::string fileNameMshThetaPhi = fs::path( fileNameMeshDescThetaPhi ).stem().string()+".msh";
-        std::cout << "filename to load " << fileNameMshThetaPhi << "\n";
+        //std::cout << "filename to load " << fileNameMshThetaPhi << "\n";
         mesh_thetaPhi = loadMesh(_mesh=new mesh_2d_type, _filename=fileNameMshThetaPhi,
                                  _worldcomm=Environment::worldCommSeq());
 
@@ -350,12 +353,14 @@ int main(int argc, char**argv )
 
         bdfEnergyDensity->start(*ULoc);
         // export initial solution
-        e->step(0)->add( "ULocSumAllDirection", *ULoc );
-        e->step(0)->add( "ULocIntegrateAllDirection", *ULoc );
+        e->step(0)->add( "sound-intensity-sum", *ULoc );
+        e->step(0)->add( "sound-intensity-integrate", *ULoc );
 
         if ( doExportSolForEachVecDir )
             for( size_type dof_thetaPhi : dofToUse_thetaPhi )
                 e->step(0)->add( (boost::format("NEWULoc%1%")%dof_thetaPhi).str(), *ULoc );
+
+        e->step(0)->add( "sound-pressure-level", *soundPressureLevel );
 
         e->save();
     }
@@ -504,8 +509,9 @@ int main(int argc, char**argv )
     for ( auto const& face : boundaryfaces(mesh) )
     {
         ++cptBoundaryFaces;
+        std::cout << "\r";
         if ( Environment::isMasterRank() )
-            std::cout << "cptBoundaryFaces = " << cptBoundaryFaces << "/" << nBoundaryFaces << "\n";
+            std::cout << "cptBoundaryFaces = " << std::setw(10) << cptBoundaryFaces << "/" << nBoundaryFaces << std::flush;// << "\n";
 
         if ( useRegisteringNormalBoundaryFaces )
         {
@@ -615,6 +621,9 @@ int main(int argc, char**argv )
 
         //break;
     } // faces
+
+    if ( Environment::isMasterRank() )
+        std::cout << "\n\n";
 
 
 
@@ -795,7 +804,7 @@ int main(int argc, char**argv )
     boost::shared_ptr<cont_range_type> myelts( new cont_range_type );
 
 
-    if ( Environment::isMasterRank() )
+    if ( false && Environment::isMasterRank() )
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
         {
             // vecteur direction
@@ -1068,14 +1077,19 @@ int main(int argc, char**argv )
 
         //-----------------------------------------------------------------//
         // export solutions
-        e->step( time )->add( "sound-intensity-sum-", *ULocSumAllDirection );
+        e->step( time )->add( "sound-intensity-sum", *ULocSumAllDirection );
         e->step( time )->add( "sound-intensity-integrate", *ULocIntegrateAllDirection );
         if ( doExportSolForEachVecDir )// (dof_thetaPhi % 5) == 0 )
             for( size_type dof_thetaPhi : dofToUse_thetaPhi )
                 e->step(time)->add( (boost::format("NEWULoc%1%")%dof_thetaPhi).str(), *(ULoc_thetaPhi[dof_thetaPhi]) );
 
-        auto soundPressureLevelExpr = 10*log( idv(ULocIntegrateAllDirection)*airDensity*vSoundVelocity/cst(std::pow(refPressure),2) );
-        soundPressureLevel = vf::project( _space=Xh,_expr=soundPressureLevelExpr );
+        auto chiPositiveExpr = chi( idv(ULocIntegrateAllDirection) > 1e-8 );
+        auto ensurePositiveExpr = 1e-5*(1-chiPositiveExpr);
+        auto soundPressureLevelExpr = 10*vf::log( idv(ULocIntegrateAllDirection)*airDensity*vSoundVelocity/cst(std::pow(refPressure,2) ) );
+        //auto soundPressureLevelExpr = 10*vf::log( ( idv(ULocIntegrateAllDirection)*airDensity*vSoundVelocity/cst(std::pow(refPressure,2) ) )*chiPositiveExpr + ensurePositiveExpr );
+        //auto soundPressureLevelExpr = 10*vf::log( (idv(ULocIntegrateAllDirection)+cst(1.))*airDensity*vSoundVelocity/cst(std::pow(refPressure,2) ) );
+        //*soundPressureLevel = vf::project( _space=Xh,_expr=soundPressureLevelExpr );
+        soundPressureLevel->on(_range=elements(Xh->mesh()),_expr=soundPressureLevelExpr );
         e->step( time )->add( "sound-pressure-level", *soundPressureLevel );
 
         e->save();
