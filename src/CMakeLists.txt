@@ -1,3 +1,4 @@
+
 feelpp_add_application( seme-acoustic 
 		SRCS seme-acoustic.cpp 
 		CFG seme-acoustic.cfg 
@@ -13,3 +14,6 @@ feelpp_add_application( seme-acoustic-fe
 		acoustic3d.geo
 		acoustic-vecpropagation.geo
 		INCLUDE_IN_ALL )
+
+feelpp_add_application( transport-equation SRCS transport-equation.cpp )
+
