@@ -18,38 +18,36 @@ int main(int argc, char**argv )
 {
 	po::options_description accousticoptions( "Accoustic options" );
 	accousticoptions.add_options()
-		//( "time-step", po::value<double>()->default_value( 0.1 ), "time step" )
-		//( "time-final", po::value<double>()->default_value( 0.1 ), "time final" )
 
-		( "coeff.M", po::value<double>()->default_value( 0.01 ), "coeff" )
-        ( "coeff.alpha", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
-        ( "coeff.d-prob", po::value<double>()->default_value( 0.5 ), "d coeff" )
-        ( "sound-velocity", po::value<double>()->default_value( 343 ), "alpha coeff" )
+		( "coeff.M", po::value<double>()->default_value( 0.01 ), "atmospheric attenuation coefficient" )
+        ( "coeff.alpha", po::value<double>()->default_value( 0.5 ), "reflexion coefficient" )
+        ( "coeff.d-prob", po::value<double>()->default_value( 0.5 ), "probability that reflexion is non specular" )
+        ( "sound-velocity", po::value<double>()->default_value( 343 ), " sound velocity [m/s]" )
+        ( "air-density", po::value<double>()->default_value( 1.225 ), "air-density [kg/m^3]" )
+        ( "reference-pressure", po::value<double>()->default_value( 2e-5 ), "reference-pressure [Pa]" )
 
-		( "stab", po::value<bool>()->default_value( true ), "coeff" )
-		( "stab-rho", po::value<double>()->default_value( 0.25 ), "coeff" )
+		( "stab", po::value<bool>()->default_value( true ), "use SUPG stab with fem solver" )
+		//( "stab-rho", po::value<double>()->default_value( 0.25 ), "coeff" )
         ( "gmsh.filename-thetaPhi", po::value<std::string>(), "name for theta phi mesh" )
+        ( "nThetaPhi", po::value<int>()->default_value( 10000 ), "max number of direction" )
 
-		( "use-first-term-bc", po::value<bool>()->default_value( true ), "coeff" )
-		( "use-second-term-bc", po::value<bool>()->default_value( true ), "coeff" )
+		( "use-first-term-bc", po::value<bool>()->default_value( true ), "use specular bc" )
+		( "use-second-term-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
 
 		( "scaling-coeff", po::value<double>()->default_value( 5. ), "coeff" )
-        ( "center_x", po::value<double>()->default_value( 1 ), "alpha coeff" )
-        ( "center_y", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
-        ( "center_z", po::value<double>()->default_value( 0.5 ), "alpha coeff" )
-        ( "radius", po::value<double>()->default_value( 0.1 ), "alpha coeff" )
-        ( "nThetaPhi", po::value<int>()->default_value( 1000 ), "alpha coeff" )
+        ( "center_x", po::value<double>()->default_value( 1 ), "x-position of source" )
+        ( "center_y", po::value<double>()->default_value( 0.5 ), "y-position of source" )
+        ( "center_z", po::value<double>()->default_value( 0.5 ), "z-position of source" )
+        ( "radius", po::value<double>()->default_value( 0.1 ), "radius of source" )
 
 		( "do-export-foreach-sol", po::value<bool>()->default_value( false ), "coeff" )
-        ( "coupling-direction", po::value<bool>()->default_value( true ), "coeff" )
+        ( "coupling-direction", po::value<bool>()->default_value( false ), "coeff" )
 
         ( "extrapolation.use-bdf", po::value<bool>()->default_value( false ), "coeff" )
 
         //( "dof_thetaPhi" , po::value<int>()->default_value( 0 ), "coeff" )
         ( "specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
 
-        ( "air-density", po::value<double>()->default_value( 1.225 ), "air-density [kg/m^3]" )
-        ( "reference-pressure", po::value<double>()->default_value( 2e-5 ), "reference-pressure [Pa]" )
 
 		;
 
@@ -90,7 +88,7 @@ int main(int argc, char**argv )
     //double timeStep = doption(_name="time-step");
     //double timeFinal = doption(_name="time-final");
     double doStab = boption(_name="stab");
-    double rho = doption(_name="stab-rho");
+    //double rho = doption(_name="stab-rho");
     double M = doption(_name="coeff.M");
     double alpha = doption(_name="coeff.alpha");
     double d_prob = doption(_name="coeff.d-prob");//0.5;
@@ -1051,15 +1049,9 @@ int main(int argc, char**argv )
         for ( size_type dof=0;dof<Xh->nLocalDof();++dof)
         {
             // type 1 : sum all direction method
-#if 1
             for( size_type dof_thetaPhi : dofToUse_thetaPhi )
                 ULocSumAllDirection->add( dof, ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) );
             //ULocSumAllDirection->set( dof, ULocSumAllDirection->operator()(dof)/dofToUse_thetaPhi.size()  );
-#else
-            for( size_type dof_thetaPhi : dofToUse_thetaPhi )
-                if ( ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) > ULocSumAllDirection->operator()( dof ) )
-                     ULocSumAllDirection->set( dof, ULoc_thetaPhi[dof_thetaPhi]->operator()( dof ) );
-#endif
 
             // type 2 : nodal projection on ThetaPhi space and integrate
             for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
