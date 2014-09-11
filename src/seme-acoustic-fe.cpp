@@ -34,6 +34,8 @@ int main(int argc, char**argv )
 		( "use-first-term-bc", po::value<bool>()->default_value( true ), "use specular bc" )
 		( "use-second-term-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
 
+		( "use-source-as-initial-solution", po::value<bool>()->default_value( true ), "use-source-as-initial-solution" )
+
 		( "scaling-coeff", po::value<double>()->default_value( 5. ), "coeff" )
         ( "center_x", po::value<double>()->default_value( 1 ), "x-position of source" )
         ( "center_y", po::value<double>()->default_value( 0.5 ), "y-position of source" )
@@ -97,7 +99,7 @@ int main(int argc, char**argv )
     bool useFirstTermInBC = boption(_name="use-first-term-bc");
     bool useSecondTermInBC = boption(_name="use-second-term-bc");
     bool doExportSolForEachVecDir = boption(_name="do-export-foreach-sol");
-    bool couplingDirection = boption(_name="coupling-direction");
+    bool couplingDirection = boption(_name="coupling-direction");//ASUP
     bool extrapUseBdf = boption(_name="extrapolation.use-bdf");
 
     double airDensity = doption(_name="air-density");
@@ -232,14 +234,14 @@ int main(int argc, char**argv )
     // build mesh
     if (nDim == 1 )
     {
-        GeoTool::Node x1(0);
+        /*GeoTool::Node x1(0);
         GeoTool::Node x2(5);
         double meshSize1d = doption(_name="gmsh.hsize");
         GeoTool::Line geoX( meshSize1d,"structH",x1,x2);
         geoX.setMarker(_type="point",_name="Boundary",_markerAll=true);
         geoX.setMarker(_type="line",_name="OmegaX",_markerAll=true);
         mesh = geoX.createMesh(_mesh=new mesh_type,
-                               _name = "meshX" );
+        _name = "meshX" );*/
     }
     else if (nDim >= 2 )
     {
@@ -249,7 +251,7 @@ int main(int argc, char**argv )
     //-----------------------------------------------------------------//
     // build space
     Xh = space_type::New(_mesh=mesh);
-    ULoc = Xh->elementPtr();
+    ULoc = Xh->elementPtr(); // ASUP
     ULocSumAllDirection = Xh->elementPtr();
     ULocIntegrateAllDirection = Xh->elementPtr();
     projBCDirichlet = Xh->elementPtr();
@@ -269,6 +271,8 @@ int main(int argc, char**argv )
     // source expression
     double center_x=doption(_name="center_x"),center_y=doption(_name="center_y"),center_z=doption(_name="center_z");
     double radius=doption(_name="radius");
+    bool useSourceAsInitialSolution = boption("use-source-as-initial-solution");
+
 
     auto chiInitSol1d = chi( pow(Px()-center_x,2) <= cst(std::pow(radius,2)) );
     auto chiInitSol2d = chi( pow(Px()-center_x,2) + pow(Py()-center_y,2) <= cst(std::pow(radius,2)) );
@@ -308,9 +312,12 @@ int main(int argc, char**argv )
     *projSourceTerm = vf::project( _space=Xh,_expr=sourceTerm3dExpr );
 #endif
     // take initial solution as source term
-    if (false)
+    if ( useSourceAsInitialSolution )
+    {
         *ULoc=*projSourceTerm;
-
+        // put zero in order to have no source in simulation
+        projSourceTerm->zero();
+    }
 
     std::vector<element_ptrtype> ULoc_thetaPhi(Xh_thetaPhi->nDof() );
     for( size_type dof_thetaPhi : dofToUse_thetaPhi )
@@ -323,33 +330,20 @@ int main(int argc, char**argv )
 
     //-----------------------------------------------------------------//
     int nThetaPhiUsed = ioption(_name="nThetaPhi");
-    size_type nDof_thetaPhi = std::min( size_type(nThetaPhiUsed),dofToUse_thetaPhi.size() );
+    size_type nDof_thetaPhi = std::min( size_type(nThetaPhiUsed),dofToUse_thetaPhi.size() );//ASUP
 
     // build exporter
-#if 0
-    typedef Exporter<mesh_type> export_type;
-    typedef boost::shared_ptr<export_type> export_ptrtype;
-    std::vector<export_ptrtype> myExporters( Xh_thetaPhi->nDof() );
-
-    if ( Environment::isMasterRank() )
-        std::cout << "nDof_thetaPhi = " << nDof_thetaPhi << std::endl;
-    if ( doExportSolForEachVecDir )
-    {
-        for( size_type dof_thetaPhi : dofToUse_thetaPhi )
-            myExporters[dof_thetaPhi] = exporter( _mesh=mesh,_name=(boost::format("allmyexporter%1%")%dof_thetaPhi).str() );
-    }
-#endif
     auto e = exporter( _mesh=mesh,_name="myexporter" );
 
-
     //-----------------------------------------------------------------//
-    //std::vector<bdf_ptrtype> myBdf( dofToUse_thetaPhi );
+
     if ( !myBdf[0]->isRestart() )
     {
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
             myBdf[dof_thetaPhi]->start(*ULoc);
 
         bdfEnergyDensity->start(*ULoc);
+
         // export initial solution
         e->step(0)->add( "sound-intensity-sum", *ULoc );
         e->step(0)->add( "sound-intensity-integrate", *ULoc );
@@ -602,13 +596,7 @@ int main(int argc, char**argv )
                                                                                         << "y =  " << hatThetaPhiCartesian[1] << " vs " << hatThetaPhiCheck[1] << "\n"
                                                                                         << "z =  " << hatThetaPhiCartesian[2] << " vs " << hatThetaPhiCheck[2] << "\n";
 
-            /*double theVx = math::sin(thetheta)*math::cos(thephi);
-            double theVy = math::sin(thetheta)*math::sin(thephi);
-            double theVz = math::cos(thetheta);
-            double theHatVx = math::sin(thehattheta)*math::cos(thehatphi);
-            double theHatVy = math::sin(thehattheta)*math::sin(thehatphi);
-            double theHatVz = math::cos(thehattheta);*/
-
+            //std::cout << " thetaPhiPt vs hatThetaPhi " << thetaPhiPt << " vs " << hatThetaPhi << "\n";
             mapThetaPhiAndHatThetaPhiNEW[ faceId ][ dof_thetaPhi ] = std::make_pair( thetaPhiPt,hatThetaPhi );
 
             ctxEvalHatThetaPhiNEW[faceId]->add( hatThetaPhi );
@@ -943,9 +931,17 @@ int main(int argc, char**argv )
                         {
                             //use solution at last time step
                             if ( dofIsUsed_thetaPhi[dof_thetaPhi2] )
+                            {
+                                //if ( dof_thetaPhi == 1 && dof_thetaPhi2 == 1 && std::abs(ublas::column(face.G(),0)[1] -6. ) < 1.1  && std::abs(ublas::column(face.G(),0)[2] - 12. ) < 1e-5  )
+                                //std::cout << "val1 :" << ULoc_thetaPhi[dof_thetaPhi2]->operator()( thedof ) << "\n";
                                 wBCintegrate->set(dof_thetaPhi2,ULoc_thetaPhi[dof_thetaPhi2]->operator()( thedof ) );
+                            }
                             else
+                            {
+                                //if ( dof_thetaPhi == 1 && dof_thetaPhi2 == 1 && std::abs(ublas::column(face.G(),0)[1] -6. ) < 1.1  && std::abs(ublas::column(face.G(),0)[2] - 12. ) < 1e-5  )
+                                //std::cout << "val2 :" << ULoc_thetaPhi[mapPeriodicDof_thetaPhi.find(dof_thetaPhi2)->second]->operator()( thedof ) << "\n";
                                 wBCintegrate->set(dof_thetaPhi2,ULoc_thetaPhi[mapPeriodicDof_thetaPhi.find(dof_thetaPhi2)->second]->operator()( thedof ) );
+                            }
                         }
                         else
                         {
@@ -979,19 +975,17 @@ int main(int argc, char**argv )
                             }
                             else
                             {
-#if 0
-                                auto evalAtHatThetaPhi = evaluateFromContext( _context=*ctxEvalHatThetaPhi,
-                                                                              _expr=idv(wBCintegrate) );
-                                wHatThetaPhi = evalAtHatThetaPhi( mapEvalFromCtxThetaPhi[dof_thetaPhi],0 );
-#else
                                 auto evalAtHatThetaPhi = evaluateFromContext( _context=*ctxEvalHatThetaPhiNEW[faceId],
                                                                               _expr=idv(wBCintegrate) );
                                 wHatThetaPhi = evalAtHatThetaPhi( mapEvalFromCtxThetaPhiNEW[faceId][dof_thetaPhi],0 );
-#endif
+                                /*if ( dof_thetaPhi == 1 && std::abs(ublas::column(face.G(),0)[1] -6. ) < 1.1  && std::abs(ublas::column(face.G(),0)[2] - 0. ) < 1e-5 &&
+                                     ublas::column(face.G(),0)[0] > 6 && ublas::column(face.G(),0)[0] < 10  )
+                                     std::cout << " wHatThetaPhi " << wHatThetaPhi << "\n";*/
                             }
 
                             // update projBCDirichlet at this dof
-                            projBCDirichlet->add( thedof, -alpha*(1-d_prob)*wHatThetaPhi );
+                            // warning : not minus!
+                            projBCDirichlet->add( thedof, alpha*(1-d_prob)*wHatThetaPhi );
                         }
 
 
@@ -1000,13 +994,18 @@ int main(int argc, char**argv )
                         {
                             auto thetaPrime = Px();
                             auto phiPrime = Py();
-                            auto vPrime = vec( cos(thetaPrime), sin(thetaPrime)*cos(phiPrime), sin(thetaPrime)*sin(phiPrime) );
-                            auto vDootN = vPrime(0,0)*unitNormal[0] + vPrime(1,0)*unitNormal[1] + vPrime(2,0)*unitNormal[2];
-                            auto chiVdotN = chi( vDootN > cst(-1e-6) );
-                            auto bcIntegrateExpr = alpha*d_prob/(M_PI*vSoundVelocity)*vDootN*idv(wBCintegrate)*sin(thetaPrime);
+                            auto vPrime = vSoundVelocity*vec( sin(thetaPrime)*cos(phiPrime), sin(thetaPrime)*sin(phiPrime), cos(thetaPrime) );
+                            auto vPrimeDotN = vPrime(0,0)*unitNormal[0] + vPrime(1,0)*unitNormal[1] + vPrime(2,0)*unitNormal[2];
+                            auto chiVPrimeDotN = chi( vPrimeDotN > cst(-1e-6) );
+                            auto bcIntegrateExpr = (alpha*d_prob/(M_PI*vSoundVelocity))*vPrimeDotN*idv(wBCintegrate)*sin(thetaPrime);
+                            //auto bcIntegrateExpr = (alpha*d_prob/M_PI)*vPrimeDotN*idv(wBCintegrate)*sin(thetaPrime);
                             double bcIntegrate = integrate(_range=elements(mesh_thetaPhi),
-                                                           _expr=bcIntegrateExpr*chiVdotN ).evaluate(false)(0,0);
+                                                           _expr=bcIntegrateExpr*chiVPrimeDotN ).evaluate(false)(0,0);
                             projBCDirichlet->add( thedof, bcIntegrate );
+
+                            /*if ( dof_thetaPhi == 1 && std::abs(ublas::column(face.G(),0)[1] -6. ) < 1.1  && std::abs(ublas::column(face.G(),0)[2] - 0. ) < 1e-5 &&
+                              ublas::column(face.G(),0)[0] > 6 && ublas::column(face.G(),0)[0] < 10  )
+                              std::cout << " bcIntegrate " << bcIntegrate << "\n";*/
 
                             // impose w as solution at last time step
                             //projBCDirichlet->add( thedof, ULoc_thetaPhi[dof_thetaPhi]->operator()(thedof) );
