@@ -29,7 +29,7 @@ int main(int argc, char**argv )
 		( "stab", po::value<bool>()->default_value( true ), "use SUPG stab with fem solver" )
 		//( "stab-rho", po::value<double>()->default_value( 0.25 ), "coeff" )
         ( "gmsh.filename-thetaPhi", po::value<std::string>(), "name for theta phi mesh" )
-        ( "nThetaPhi", po::value<int>()->default_value( 10000 ), "max number of direction" )
+        //( "nThetaPhi", po::value<int>()->default_value( 10000 ), "max number of direction" )
 
 		( "use-first-term-bc", po::value<bool>()->default_value( true ), "use specular bc" )
 		( "use-second-term-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
@@ -43,19 +43,24 @@ int main(int argc, char**argv )
         ( "radius", po::value<double>()->default_value( 0.1 ), "radius of source" )
 
 		( "do-export-foreach-sol", po::value<bool>()->default_value( false ), "coeff" )
-        ( "coupling-direction", po::value<bool>()->default_value( false ), "coeff" )
+        //( "coupling-direction", po::value<bool>()->default_value( false ), "coeff" )
 
         ( "extrapolation.use-bdf", po::value<bool>()->default_value( false ), "coeff" )
 
         //( "dof_thetaPhi" , po::value<int>()->default_value( 0 ), "coeff" )
-        ( "specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
 
         ( "acoustic-model.verbose", po::value<bool>()->default_value( false ), "print some additional info" )
 
+        ( "acoustic-model.export-propagation-vectors-in-geofile", po::value<bool>()->default_value( false ), "export propagation vectors in geofile" )
+        ( "acoustic-model.export-specular-vectors-in-geofile", po::value<bool>()->default_value( false ), "export speculars vectors in geofile" )
+        ( "specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
+
+        ( "use-storage-from-normal-boundary-faces", po::value<bool>()->default_value( true ), "use-storage-from-normal-boundary-faces" )
 		;
 
 	Environment env( _argc=argc, _argv=argv,
-                     _desc=accousticoptions.add(feel_options()).add( backend_options( "l2proj") ),
+                     _desc=accousticoptions,
+                     _desc_lib=feel_options().add( backend_options( "l2proj") ),
                      _about=about(_name="seme-acoustic",
                                   _author="Feel++ Consortium",
                                   _email="feelpp-devel@feelpp.org"));
@@ -93,8 +98,6 @@ int main(int argc, char**argv )
     typedef backend_type::vector_ptrtype vector_ptrtype;
 
 
-    //double timeStep = doption(_name="time-step");
-    //double timeFinal = doption(_name="time-final");
     double doStab = boption(_name="stab");
     //double rho = doption(_name="stab-rho");
     double M = doption(_name="coeff.M");
@@ -105,11 +108,14 @@ int main(int argc, char**argv )
     bool useFirstTermInBC = boption(_name="use-first-term-bc");
     bool useSecondTermInBC = boption(_name="use-second-term-bc");
     bool doExportSolForEachVecDir = boption(_name="do-export-foreach-sol");
-    bool couplingDirection = boption(_name="coupling-direction");//ASUP
+    //bool couplingDirection = boption(_name="coupling-direction");//ASUP
     bool extrapUseBdf = boption(_name="extrapolation.use-bdf");
 
     double airDensity = doption(_name="air-density");
     double refPressure = doption(_name="reference-pressure");
+
+    bool exportPropVecInGeoFile = boption(_prefix="acoustic-model",_name="export-propagation-vectors-in-geofile");
+    bool exportSpecVecInGeoFile = boption(_prefix="acoustic-model",_name="export-specular-vectors-in-geofile");
 
     //-----------------------------------------------------------------//
     // create FE mesh/space and 1d meshes/spaces for bases dim
@@ -118,11 +124,10 @@ int main(int argc, char**argv )
     element_ptrtype ULoc,ULocSumAllDirection,ULocIntegrateAllDirection,projBCDirichlet,projSourceTerm;
     element_ptrtype soundPressureLevel;
 
-    mesh_2d_ptrtype mesh_thetaPhi;
-    space_2d_ptrtype Xh_thetaPhi;
 
     //-----------------------------------------------------------------//
     // build mesh for theta phi
+    mesh_2d_ptrtype mesh_thetaPhi;
     // in // start by master rank (write msh file), and load after others process
     std::string fileNameMeshDescThetaPhi = Environment::expand( soption(_name="gmsh.filename-thetaPhi") );
     if ( Environment::isMasterRank() )
@@ -135,39 +140,17 @@ int main(int argc, char**argv )
         //std::cout << "filename to load " << fileNameMshThetaPhi << "\n";
         mesh_thetaPhi = loadMesh(_mesh=new mesh_2d_type, _filename=fileNameMshThetaPhi,
                                  _worldcomm=Environment::worldCommSeq());
-
     }
 
-    Xh_thetaPhi = space_2d_type::New(_mesh=mesh_thetaPhi,_worldscomm=std::vector<WorldComm>(1,Environment::worldCommSeq()) );
+    // build function space for theta phi
+    space_2d_ptrtype Xh_thetaPhi;
+    Xh_thetaPhi = space_2d_type::New(_mesh=mesh_thetaPhi,
+                                     _worldscomm=std::vector<WorldComm>(1,Environment::worldCommSeq()) );
+
+    // find doublon in thetaphi functionspace and compute dof's periodicity
     std::set<size_type> dofToUse_thetaPhi;
     std::vector<bool> dofIsUsed_thetaPhi(Xh_thetaPhi->nDof(),true);
     std::map<size_type,size_type> mapPeriodicDof_thetaPhi;
-#if 0
-    for( size_type dof_thetaPhi=0 ; dof_thetaPhi<Xh_thetaPhi->nDof() ; ++dof_thetaPhi )
-    {
-        auto const& mythetaPhiPt = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi).get<0>();
-        // not insert 2pi (doublon)
-        if ( mythetaPhiPt[1] < (2*M_PI-0.00001) )
-        {
-            dofToUse_thetaPhi.insert(dof_thetaPhi);// dofToUse_thetaPhi[dof_thetaPhi]=false;
-        }
-        else
-        {
-            dofIsUsed_thetaPhi[dof_thetaPhi] = false;
-            // search corresponding dof
-            bool hasFindPeriodicDof=false;
-            for( size_type dof_thetaPhi2=0 ; dof_thetaPhi2<Xh_thetaPhi->nDof() && !hasFindPeriodicDof ; ++dof_thetaPhi2 )
-            {
-                auto const& mythetaPhiPt2 = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi2).get<0>();
-                if ( std::abs( mythetaPhiPt[0]-mythetaPhiPt2[0] ) < 1e-9 && std::abs( mythetaPhiPt2[1] ) < 1e-9 )
-                {
-                    mapPeriodicDof_thetaPhi[ dof_thetaPhi ] = dof_thetaPhi2;
-                    hasFindPeriodicDof=true;
-                }
-            }
-        }
-    }
-#else
 
     bool findThetaPhiLeft=false,findThetaPhiRight=false;
     size_type idThetaPhiLeft = invalid_size_type_value, idThetaPhiRight = invalid_size_type_value;
@@ -227,11 +210,7 @@ int main(int argc, char**argv )
             }
         }
 
-
-
-
     }
-#endif
 
     if ( Environment::isMasterRank() )
         std::cout << "Xh_thetaPhi->nDof : = " << Xh_thetaPhi->nDof() << std::endl;
@@ -321,8 +300,8 @@ int main(int argc, char**argv )
     //ULoc_thetaPhi[dof_thetaPhi]->set(dof, ULoc->operator()(dof) );
 
     //-----------------------------------------------------------------//
-    int nThetaPhiUsed = ioption(_name="nThetaPhi");
-    size_type nDof_thetaPhi = std::min( size_type(nThetaPhiUsed),dofToUse_thetaPhi.size() );//ASUP
+    //int nThetaPhiUsed = ioption(_name="nThetaPhi");
+    //size_type nDof_thetaPhi = std::min( size_type(nThetaPhiUsed),dofToUse_thetaPhi.size() );//ASUP
 
     // build exporter
     auto e = exporter( _mesh=mesh,_name="myexporter" );
@@ -334,8 +313,6 @@ int main(int argc, char**argv )
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
             myBdf[dof_thetaPhi]->start(*ULoc);
 
-        //bdfEnergyDensity->start(*ULoc);
-
         // export initial solution
         e->step(0)->add( "sound-intensity-sum", *ULoc );
         e->step(0)->add( "sound-intensity-integrate", *ULoc );
@@ -345,13 +322,13 @@ int main(int argc, char**argv )
                 e->step(0)->add( (boost::format("NEWULoc%1%")%dof_thetaPhi).str(), *ULoc );
 
         e->step(0)->add( "sound-pressure-level", *soundPressureLevel );
-
         e->save();
+
+        if ( Environment::isMasterRank() )
+            std::cout << "init time step and export initial solution done\n";
     }
     else
     {
-        //bdfEnergyDensity->restart();
-
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
         {
             myBdf[dof_thetaPhi]->restart();
@@ -361,13 +338,14 @@ int main(int argc, char**argv )
         // restart exporter
         if ( e->doExport() )
             e->restart( myBdf[0]->timeInitial() );
+
+        if ( Environment::isMasterRank() )
+            std::cout << "restart time step and export done\n";
     }
 
 
     //-----------------------------------------------------------------//
 
-    if ( Environment::isMasterRank() )
-        std::cout << "export done" << std::endl;
 
     //-----------------------------------------------------------------//
     // create algebraic structure
@@ -395,7 +373,7 @@ int main(int argc, char**argv )
     vz_proj->on( _range=elements(mesh_thetaPhi), _expr=vSoundVelocity*cos(Px()) );
 
     // export each vector direction in geo file for Gmsh
-    if ( !myBdf[0]->isRestart() && Environment::isMasterRank() )
+    if ( exportPropVecInGeoFile && !myBdf[0]->isRestart() && Environment::isMasterRank() )
     {
         std::ofstream fileAllDir("allvectordirection.geo", std::ios::out);
         fileAllDir << "myh=0.5;\n";
@@ -433,50 +411,6 @@ int main(int argc, char**argv )
     locMeshThetaPhi->updateForUse();
     std::vector<size_type> localisationHatThetaPhi( Xh_thetaPhi->nDof(), invalid_size_type_value );
 
-#if 0 // old
-    context_ptrtype ctxEvalHatThetaPhi( new context_type( Xh_thetaPhi ) );
-
-
-    //for( size_type dof_thetaPhi=0; dof_thetaPhi<nDof_thetaPhi; ++dof_thetaPhi)
-    std::map<size_type,size_type> mapEvalFromCtxThetaPhi;
-    std::map<size_type,std::pair<node_type,node_type> > mapThetaPhiAndHatThetaPhi;
-    size_type cptNodeCtx=0;
-    for( size_type dof_thetaPhi : dofToUse_thetaPhi )
-    {
-        auto thetaPhiPt = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi).get<0>();
-        node_type hatThetaPhi(2);
-        hatThetaPhi[0] = M_PI - thetaPhiPt[0]; // [0,pi]
-        //hatThetaPhi[1] = ( thetaPhiPt[1]<=M_PI ) ? M_PI -thetaPhiPt[1] : M_PI -thetaPhiPt[1] + 2*M_PI; // [0,2*pi]
-        //hatThetaPhi[1] = 2*M_PI - thetaPhiPt[1]; // [0,2*pi]
-        hatThetaPhi[1] = ( thetaPhiPt[1] < M_PI  )? thetaPhiPt[1] + M_PI : thetaPhiPt[1] - M_PI ; // [0,2*pi]
-        CHECK( hatThetaPhi[0] >= 0 &&  hatThetaPhi[0] <= M_PI ) << " hhihih " << hatThetaPhi[0] << "\n";
-        CHECK( hatThetaPhi[1] >= 0 &&  hatThetaPhi[1] <= 2*M_PI ) << " hhihih" << hatThetaPhi[1] << "\n";
-
-        // check v dot n = -hat{v} dot n
-        double rescheckX = math::sin(thetaPhiPt[0])*math::cos(thetaPhiPt[1]) + math::sin(hatThetaPhi[0])*math::cos(hatThetaPhi[1]);
-        double rescheckY = math::sin(thetaPhiPt[0])*math::sin(thetaPhiPt[1]) + math::sin(hatThetaPhi[0])*math::sin(hatThetaPhi[1]);
-        double rescheckZ = math::cos(thetaPhiPt[0]) + math::cos(hatThetaPhi[0]);
-        CHECK( std::abs(rescheckX) < 1e-9 && std::abs(rescheckY) < 1e-9 && std::abs(rescheckZ) < 1e-9 ) << " v dot n != -hat{v} dot n : "
-                                                                                                        << rescheckY << " " << rescheckY << " " << rescheckZ << "\n";
-
-        mapThetaPhiAndHatThetaPhi[ dof_thetaPhi ] = std::make_pair( thetaPhiPt,hatThetaPhi );
-
-        if ( true )
-        {
-            ctxEvalHatThetaPhi->add( hatThetaPhi );
-            mapEvalFromCtxThetaPhi[dof_thetaPhi]=cptNodeCtx;
-            ++cptNodeCtx;
-        }
-        else
-        {
-            auto resLocalisation = locMeshThetaPhi->searchElement(hatThetaPhi);
-            CHECK( resLocalisation.get<0>() ) << " aieee pas trouver!!\n";
-            localisationHatThetaPhi[dof_thetaPhi] = resLocalisation.get<1>();
-            //std::cout << " the pt " << hatThetaPhi << " is localised in element " << mesh_thetaPhi->element( resLocalisation.get<1>() ).G() << "\n";
-        }
-    }
-#endif
-
     //-----------------------------------------------------------------//
     //-----------------------------------------------------------------//
     // NEW
@@ -486,11 +420,11 @@ int main(int argc, char**argv )
     std::map<size_type,std::map<size_type,bool> > doComputeHatThetaPhi;
     std::map<size_type, node_type> mapUnitNormalByFace;
     std::map<size_type,vector_ptrtype > mapOperatorDiffuseBC;
-    std::set< boost::tuple<size_type,double,double,double> > setOfNormalVectorStored;
+    std::set< boost::tuple<double,double,double,size_type> > setOfNormalVectorStored;
 
     size_type nBoundaryFaces = nelements(boundaryfaces(mesh),false);
     size_type cptBoundaryFaces = 0;
-    bool useStorageNormalBoundaryFaces=true;
+    bool useStorageNormalBoundaryFaces= boption(_name="use-storage-from-normal-boundary-faces"); // )true;
     for ( auto const& face : boundaryfaces(mesh) )
     {
         ++cptBoundaryFaces;
@@ -626,10 +560,10 @@ int main(int argc, char**argv )
     } // faces
 
     if ( Environment::isMasterRank() )
-        std::cout << "\n\n";
-
-
-
+        std::cout << "\nwaiting other process (can be take a long time)" << std::flush;
+    Environment::worldComm().barrier();
+    if ( Environment::isMasterRank() )
+        std::cout << "\rfinish precompute (size of normalVectorStored.size : " << setOfNormalVectorStored.size() << ")\n";
 
 
 
@@ -953,7 +887,7 @@ int main(int argc, char**argv )
 
                 if ( doComputeHatThetaPhi[faceId][dof_thetaPhi] ) //valVdotN < 0 )
                     myelts->push_back(boost::cref(face));
-
+                //continue;
 
                 for ( uint16_type fDof = 0 ; fDof<Xh->dof()->nLocalDofOnFace(true) ; ++fDof)
                 {
@@ -964,6 +898,7 @@ int main(int argc, char**argv )
                     //{
                     //for( size_type dof_thetaPhi2 : dofToUse_thetaPhi )
                     //    wBCintegrate->set( dof_thetaPhi2,ULoc_thetaPhi[ dof_thetaPhi2 ]->operator()( thedof ) );
+
                     for( size_type dof_thetaPhi2=0 ; dof_thetaPhi2<Xh_thetaPhi->nDof() ; ++dof_thetaPhi2 )
                     {
                         if ( !extrapUseBdf )
@@ -1054,17 +989,18 @@ int main(int argc, char**argv )
                 } // for ( fDof ... )
             } // for ( auto const& face : boundaryfaces(mesh) )
 
+            if ( true )
+            {
+                auto myMarkedFacesBCRange = boost::make_tuple( mpl::size_t<MESH_FACES>(),
+                                                               myelts->begin(),
+                                                               myelts->end(),
+                                                               myelts );
 
-            auto myMarkedFacesBCRange = boost::make_tuple( mpl::size_t<MESH_FACES>(),
-                                                           myelts->begin(),
-                                                           myelts->end(),
-                                                           myelts );
-
-
-            // up mat and rhs for bc Dirichlet condition
-            form2(_test=Xh,_trial=Xh,_matrix=mat) +=
-                on(_range=myMarkedFacesBCRange,//boundaryfaces(mesh),
-                   _rhs=rhs, _element=*ULoc, _expr=idv(projBCDirichlet) );
+                // up mat and rhs for bc Dirichlet condition
+                form2(_test=Xh,_trial=Xh,_matrix=mat) +=
+                    on(_range=myMarkedFacesBCRange,//boundaryfaces(mesh),
+                       _rhs=rhs, _element=*ULoc, _expr=idv(projBCDirichlet) );
+            }
 
             tElapsed = mytimer.elapsed();
             if ( verbose && Environment::isMasterRank() )
