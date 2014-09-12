@@ -228,12 +228,11 @@ int main(int argc, char**argv )
     projBCDirichlet = Xh->elementPtr();
     projSourceTerm = Xh->elementPtr();
     soundPressureLevel = Xh->elementPtr();
-    //bdf_ptrtype bdfEnergyDensity = bdf( _vm=Environment::vm(), _space=Xh,
-    //                                    _name="energy-density" );
+
     std::vector<bdf_ptrtype> myBdf( Xh_thetaPhi->nDof() );
     for( size_type dof_thetaPhi : dofToUse_thetaPhi )
         myBdf[dof_thetaPhi] = bdf( _vm=Environment::vm(), _space=Xh,
-                                   _name=(boost::format("energy%1%")%dof_thetaPhi ).str());
+                                   _name=(boost::format("energy%1%-%2%_%3%")%dof_thetaPhi %Environment::worldComm().rank() %Environment::worldComm().size() ).str());
 
     if ( Environment::isMasterRank() )
         std::cout << "Xh->nDof : = " << Xh->nDof() << std::endl;
