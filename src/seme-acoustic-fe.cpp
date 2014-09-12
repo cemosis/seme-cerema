@@ -50,6 +50,7 @@ int main(int argc, char**argv )
         //( "dof_thetaPhi" , po::value<int>()->default_value( 0 ), "coeff" )
         ( "specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
 
+        ( "acoustic-model.verbose", po::value<bool>()->default_value( false ), "print some additional info" )
 
 		;
 
@@ -85,6 +86,11 @@ int main(int argc, char**argv )
     typedef boost::shared_ptr<space_2d_type> space_2d_ptrtype;
     typedef space_2d_type::element_type element_2d_type;
     typedef boost::shared_ptr<element_2d_type> element_2d_ptrtype;
+
+    typedef Backend<double> backend_type;
+    //typedef boost::shared_ptr<backend_type> backend_ptrtype;
+    typedef backend_type::sparse_matrix_ptrtype sparse_matrix_ptrtype;
+    typedef backend_type::vector_ptrtype vector_ptrtype;
 
 
     //double timeStep = doption(_name="time-step");
@@ -232,21 +238,7 @@ int main(int argc, char**argv )
 
     //-----------------------------------------------------------------//
     // build mesh
-    if (nDim == 1 )
-    {
-        /*GeoTool::Node x1(0);
-        GeoTool::Node x2(5);
-        double meshSize1d = doption(_name="gmsh.hsize");
-        GeoTool::Line geoX( meshSize1d,"structH",x1,x2);
-        geoX.setMarker(_type="point",_name="Boundary",_markerAll=true);
-        geoX.setMarker(_type="line",_name="OmegaX",_markerAll=true);
-        mesh = geoX.createMesh(_mesh=new mesh_type,
-        _name = "meshX" );*/
-    }
-    else if (nDim >= 2 )
-    {
-        mesh = loadMesh(_mesh=new mesh_type);
-    }
+    mesh = loadMesh(_mesh=new mesh_type);
 
     //-----------------------------------------------------------------//
     // build space
@@ -257,8 +249,8 @@ int main(int argc, char**argv )
     projBCDirichlet = Xh->elementPtr();
     projSourceTerm = Xh->elementPtr();
     soundPressureLevel = Xh->elementPtr();
-    bdf_ptrtype bdfEnergyDensity = bdf( _vm=Environment::vm(), _space=Xh,
-                                        _name="energy-density" );
+    //bdf_ptrtype bdfEnergyDensity = bdf( _vm=Environment::vm(), _space=Xh,
+    //                                    _name="energy-density" );
     std::vector<bdf_ptrtype> myBdf( Xh_thetaPhi->nDof() );
     for( size_type dof_thetaPhi : dofToUse_thetaPhi )
         myBdf[dof_thetaPhi] = bdf( _vm=Environment::vm(), _space=Xh,
@@ -342,7 +334,7 @@ int main(int argc, char**argv )
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
             myBdf[dof_thetaPhi]->start(*ULoc);
 
-        bdfEnergyDensity->start(*ULoc);
+        //bdfEnergyDensity->start(*ULoc);
 
         // export initial solution
         e->step(0)->add( "sound-intensity-sum", *ULoc );
@@ -358,7 +350,7 @@ int main(int argc, char**argv )
     }
     else
     {
-        bdfEnergyDensity->restart();
+        //bdfEnergyDensity->restart();
 
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
         {
@@ -489,15 +481,16 @@ int main(int argc, char**argv )
     //-----------------------------------------------------------------//
     // NEW
     std::map<size_type,std::map<size_type,std::pair<node_type,node_type> > > mapThetaPhiAndHatThetaPhiNEW;
-
     std::map<size_type,context_ptrtype> ctxEvalHatThetaPhiNEW;//( new context_type( Xh_thetaPhi ) );
     std::map<size_type,std::map<size_type,size_type> > mapEvalFromCtxThetaPhiNEW;
-
     std::map<size_type,std::map<size_type,bool> > doComputeHatThetaPhi;
+    std::map<size_type, node_type> mapUnitNormalByFace;
+    std::map<size_type,vector_ptrtype > mapOperatorDiffuseBC;
+    std::set< boost::tuple<size_type,double,double,double> > setOfNormalVectorStored;
 
     size_type nBoundaryFaces = nelements(boundaryfaces(mesh),false);
     size_type cptBoundaryFaces = 0;
-    bool useRegisteringNormalBoundaryFaces=false;
+    bool useStorageNormalBoundaryFaces=true;
     for ( auto const& face : boundaryfaces(mesh) )
     {
         ++cptBoundaryFaces;
@@ -505,17 +498,45 @@ int main(int argc, char**argv )
         if ( Environment::isMasterRank() )
             std::cout << "cptBoundaryFaces = " << std::setw(10) << cptBoundaryFaces << "/" << nBoundaryFaces << std::flush;// << "\n";
 
-        if ( useRegisteringNormalBoundaryFaces )
-        {
-            // TODO HERE
-
-        }
-
         size_type faceId = face.id();
-        ctxEvalHatThetaPhiNEW[faceId].reset( new context_type( Xh_thetaPhi ) );
-
         ctx->update( face.element0(), face.pos_first() );
         auto unitNormal = ctx->unitNormal();
+
+        if ( useStorageNormalBoundaryFaces )
+        {
+            bool findNormal = false;
+            size_type faceIdReference = invalid_size_type_value;
+            for ( auto const& normalVecStored : setOfNormalVectorStored )
+            {
+                if ( std::abs( normalVecStored.get<0>() - unitNormal[0] ) < 1e-8 &&
+                     std::abs( normalVecStored.get<1>() - unitNormal[1] ) < 1e-8 &&
+                     std::abs( normalVecStored.get<2>() - unitNormal[2] ) < 1e-8 )
+                {
+                    findNormal = true;
+                    faceIdReference = normalVecStored.get<3>();
+                    break;
+                }
+            }
+
+            if ( findNormal )
+            {
+                ctxEvalHatThetaPhiNEW[faceId] = ctxEvalHatThetaPhiNEW.find(faceIdReference)->second;
+                mapUnitNormalByFace[ faceId ] = unitNormal;
+                doComputeHatThetaPhi[faceId] = doComputeHatThetaPhi.find(faceIdReference)->second;
+                mapThetaPhiAndHatThetaPhiNEW[ faceId ] = mapThetaPhiAndHatThetaPhiNEW.find(faceIdReference)->second;
+                mapEvalFromCtxThetaPhiNEW[faceId] = mapEvalFromCtxThetaPhiNEW.find(faceIdReference)->second;
+                mapOperatorDiffuseBC[faceId] = mapOperatorDiffuseBC.find(faceIdReference)->second;
+                // next face
+                continue;
+            }
+
+            // say that data for this normal vector will be computed
+            setOfNormalVectorStored.insert( boost::make_tuple( unitNormal[0],unitNormal[1],unitNormal[2],faceId ) );
+        }
+
+
+        ctxEvalHatThetaPhiNEW[faceId].reset( new context_type( Xh_thetaPhi ) );
+        mapUnitNormalByFace[ faceId ] = unitNormal;
 
         size_type cptNodeCtx = 0;
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
@@ -529,14 +550,15 @@ int main(int argc, char**argv )
             double valVdotN = vDirection[0]*unitNormal[0] + vDirection[1]*unitNormal[1] + vDirection[2]*unitNormal[2];
 
             // on prend les vecteur speculaire partant de la paroi (on calcul les vecteurs arrivants sur la paroi )
-            if ( valVdotN > -1e-6 ) //if ( valVdotN < 1e-6 ) //if ( valVdotN > -1e-6 )   // -1e-7 ) //std::abs( valVdotN ) < 1e-7 )
+            if ( valVdotN > -1e-6 )
             {
                 doComputeHatThetaPhi[faceId][dof_thetaPhi]=false;
                 continue;
             }
-            //std::cout << " valVdotN " << valVdotN <<"\n";
+
             doComputeHatThetaPhi[faceId][dof_thetaPhi]=true;
 
+            // compute specular vector in cartesian coord (thank to tangent plane projector)
             node_type hatThetaPhiCartesian(3);
             hatThetaPhiCartesian[0] = vDirection[0] - 2*valVdotN*unitNormal[0];
             hatThetaPhiCartesian[1] = vDirection[1] - 2*valVdotN*unitNormal[1];
@@ -546,43 +568,16 @@ int main(int argc, char**argv )
                 hatThetaPhiCartesian[k] /= normHatThetaPhiCartesian;
             normHatThetaPhiCartesian = math::sqrt(math::pow(hatThetaPhiCartesian[0],2)+math::pow(hatThetaPhiCartesian[1],2)+math::pow(hatThetaPhiCartesian[2],2));
             CHECK( math::abs(normHatThetaPhiCartesian-1) < 1e-9 ) << "normHatThetaPhiCartesian = " << normHatThetaPhiCartesian;
-            //std::cout << "hatThetaPhiCartesian " << hatThetaPhiCartesian << "\n";
 
             auto thetaPhiPt = Xh_thetaPhi->dof()->dofPoint(dof_thetaPhi).get<0>();
             node_type hatThetaPhi(2);
             hatThetaPhi[0] = math::acos(hatThetaPhiCartesian[2]/1);
             CHECK( hatThetaPhi[0] >= -1e-8 && hatThetaPhi[0] <= (M_PI+1e-8) ) << "hatTheta is not in [0,pi] : "  << hatThetaPhi[0];
-#if 0
-            if ( hatThetaPhiCartesian[0] > 1e-7 )
-                hatThetaPhi[1] = math::atan(hatThetaPhiCartesian[1]/hatThetaPhiCartesian[0]);
-            else if ( hatThetaPhiCartesian[0] < -1e-7 )
-            {
-                if ( hatThetaPhiCartesian[1] >= 0 )
-                {
-                    hatThetaPhi[1] = math::atan(hatThetaPhiCartesian[1]/hatThetaPhiCartesian[0]) + M_PI;
-                    //continue;
-                    //hatThetaPhi[1] = math::acos( hatThetaPhiCartesian[0]/( math::sqrt(math::pow(hatThetaPhiCartesian[0],2)+math::pow(hatThetaPhiCartesian[1],2)) ) );
-                }
-                else
-                {
-                    hatThetaPhi[1] = math::atan(hatThetaPhiCartesian[1]/hatThetaPhiCartesian[0]) - M_PI;
-                    //continue;
-                    //hatThetaPhi[1] = 2*M_PI - math::acos( hatThetaPhiCartesian[0]/( math::sqrt(math::pow(hatThetaPhiCartesian[0],2)+math::pow(hatThetaPhiCartesian[1],2)) ) );
-                }
-            }
-            else
-            {
-                if ( hatThetaPhiCartesian[1] > 1e-8 )
-                    hatThetaPhi[1] = M_PI/2;
-                else if ( hatThetaPhiCartesian[1] < -1e-8 )
-                    hatThetaPhi[1] = -M_PI/2;
-                else
-                    CHECK( false ) << "error";
-            }
-#else
+            // see http://en.wikipedia.org/wiki/Atan2
             hatThetaPhi[1] = std::atan2(hatThetaPhiCartesian[1],hatThetaPhiCartesian[0]);
-#endif
-            if ( hatThetaPhi[1] < 0 ) hatThetaPhi[1] += 2*M_PI;
+            // translate phi if not in [0,2*pi]
+            if ( hatThetaPhi[1] < 0 )
+                hatThetaPhi[1] += 2*M_PI;
             CHECK( hatThetaPhi[1] >= -1e-8 && hatThetaPhi[1] <= (2*M_PI+1e-8) ) << " hatPhi is not in [0,2pi] : "  << hatThetaPhi[1];
 
             node_type hatThetaPhiCheck(3);
@@ -605,7 +600,29 @@ int main(int argc, char**argv )
 
         } // for (dof_thetaPhi)
 
-        //break;
+        if ( true )
+        {
+            mapOperatorDiffuseBC[faceId] = backend()->newVector(Xh_thetaPhi);
+
+            auto thetaPrime = Px();
+            auto phiPrime = Py();
+            auto vPrime = vSoundVelocity*vec( sin(thetaPrime)*cos(phiPrime), sin(thetaPrime)*sin(phiPrime), cos(thetaPrime) );
+            auto vPrimeDotN = vPrime(0,0)*unitNormal[0] + vPrime(1,0)*unitNormal[1] + vPrime(2,0)*unitNormal[2];
+#if 0
+            auto chiVPrimeDotN = chi( vPrimeDotN > cst(-1e-6) );// not compile with linearform(maybe bilinear also
+#else
+            auto chiVPrimeDotN = chi( ( sin(thetaPrime)*cos(phiPrime)*unitNormal[0] + sin(thetaPrime)*sin(phiPrime)*unitNormal[1] + cos(thetaPrime)*unitNormal[2] )  > cst(-1e-6) );
+#endif
+            auto uThetaPhi = Xh_thetaPhi->element();
+            auto bcIntegrateExpr = (alpha*d_prob/(M_PI*vSoundVelocity))*vPrimeDotN*id(uThetaPhi)*sin(thetaPrime);
+            form1(_test=Xh_thetaPhi,_vector=mapOperatorDiffuseBC[faceId] )
+                = integrate(_range=elements(mesh_thetaPhi),
+                            _expr=bcIntegrateExpr*chiVPrimeDotN
+                            );
+            mapOperatorDiffuseBC[faceId]->close();
+        }
+
+
     } // faces
 
     if ( Environment::isMasterRank() )
@@ -806,40 +823,54 @@ int main(int argc, char**argv )
     //-----------------------------------------------------------------//
     //-----------------------------------------------------------------//
     //-----------------------------------------------------------------//
+    boost::mpi::timer mytimer;
+    bool verbose = boption(_name="acoustic-model.verbose");
     // time loop
     while ( !myBdf[0]->isFinished() )
     {
         double time = myBdf[0]->time();
         if ( Environment::isMasterRank() )
-            std::cout << "time " << time << "\n";
+            std::cout << "\n-----------------------------------\n"
+                      << "time " << time << "\n";
 
         size_type cpt_dof_thetaPhi = 0;
         for( size_type dof_thetaPhi : dofToUse_thetaPhi )
         {
             if ( Environment::isMasterRank() )
-                std::cout << "dof_thetaPhi : " << ++cpt_dof_thetaPhi << "/" << dofToUse_thetaPhi.size() << "\n";
+            {
+                if ( verbose )
+                    std::cout << "dof_thetaPhi : " << ++cpt_dof_thetaPhi << "/" << dofToUse_thetaPhi.size() << "\n";
+                else
+                {
+                    std::cout << "\r";
+                    std::cout << "dof_thetaPhi : " << ++cpt_dof_thetaPhi << "/" << dofToUse_thetaPhi.size() << std::flush;
+                }
+            }
+
             mat->zero();
             rhs->zero();
             //USol->zero();
             *USol = *ULoc_thetaPhi[dof_thetaPhi];
 
-            // vecteur direction
+            // vector transport direction
             vDirection[0] = vx_proj->operator()(dof_thetaPhi);
             if( nDim >= 2 )
                 vDirection[1] = vy_proj->operator()(dof_thetaPhi);
             if( nDim == 3 )
                 vDirection[2] = vz_proj->operator()(dof_thetaPhi);
-            if ( Environment::isMasterRank() )
-                std::cout << "vDirection[0] " << vDirection[0] << " vDirection[1] " << vDirection[1] << " vDirection[2] " << vDirection[2] << "\n";
+            //if ( Environment::isMasterRank() )
+            //    std::cout << "vDirection[0] " << vDirection[0] << " vDirection[1] " << vDirection[1] << " vDirection[2] " << vDirection[2] << "\n";
 
             //-----------------------------------------------------------------//
+            mytimer.restart();
             // time discretisation and source term
             form2(_test=Xh,_trial=Xh,_matrix=mat) +=
                 integrate(_range=elements(mesh),
                           _expr=myBdf[dof_thetaPhi]->polyDerivCoefficient(0)*idt(ULoc)*id(ULoc) );
 
             //auto polyDerivInTime = myBdf[dof_thetaPhi]->polyDeriv();
-            auto polyDerivInTime = (couplingDirection)? bdfEnergyDensity->polyDeriv() : myBdf[dof_thetaPhi]->polyDeriv();
+            //auto polyDerivInTime = (couplingDirection)? bdfEnergyDensity->polyDeriv() : myBdf[dof_thetaPhi]->polyDeriv();
+            auto polyDerivInTime = myBdf[dof_thetaPhi]->polyDeriv();
             auto rhsExpr = idv(projSourceTerm)+idv(polyDerivInTime);
             //auto rhsExpr = idv(polyDerivInTime);
 
@@ -853,13 +884,15 @@ int main(int argc, char**argv )
                 integrate(_range=elements(mesh),
                           _expr=gradt(ULoc)*vDirExpr*id(ULoc) );
 
-            if ( Environment::isMasterRank() )
-                std::cout << " assemblage base done \n";
+            double tElapsed = mytimer.elapsed();
+            if ( verbose && Environment::isMasterRank() )
+                std::cout << " assemblage base done in " << tElapsed << "s\n";
 
             //-----------------------------------------------------------------//
             // stabilisation
             if ( doStab )
             {
+                mytimer.restart();
                 // SUPG stab
                 auto coeff = vf::h()/( 2*norm2( vDirExpr ) );
                 auto residualStabForm2 = myBdf[dof_thetaPhi]->polyDerivCoefficient(0)*idt(ULoc) + gradt(ULoc)*vDirExpr;
@@ -870,24 +903,31 @@ int main(int argc, char**argv )
                 form1(_test=Xh,_vector=rhs) +=
                     integrate(_range=elements(mesh),
                               _expr=coeff*(grad(ULoc)*vDirExpr)*residualStabForm1 );
-                if ( Environment::isMasterRank() )
-                    std::cout << " assemblage stab done \n";
+                tElapsed = mytimer.elapsed();
+                if ( verbose && Environment::isMasterRank() )
+                    std::cout << " assemblage stab done in " << tElapsed << "s\n";
             }
 
             //-----------------------------------------------------------------//
             // boundary conditions
+            mytimer.restart();
+
             projBCDirichlet->zero();
             myelts->clear();//resize(0);
             std::vector<bool> dofdone(Xh->nLocalDof(),false);
             for ( auto const& face : boundaryfaces(mesh) )
             {
                 size_type faceId = face.id();
+#if 0
                 ctx->update( face.element0(), face.pos_first() );
                 auto unitNormal = ctx->unitNormal();
+#endif
+                auto unitNormal = mapUnitNormalByFace[ faceId ];
                 double valVdotN = vDirection[0]*unitNormal[0] + vDirection[1]*unitNormal[1] + vDirection[2]*unitNormal[2];
                 if ( std::abs(valVdotN) < 1e-6 ) continue;
                 //continue;
 
+#if !defined(NDEBUG)
                 if ( doComputeHatThetaPhi[faceId][dof_thetaPhi] )
                 {
                     double thetheta = mapThetaPhiAndHatThetaPhiNEW[faceId][dof_thetaPhi].first[0];
@@ -906,10 +946,9 @@ int main(int argc, char**argv )
                     CHECK ( std::abs(res)<1e-12 ) << "invalid vn != hatv n : " << res << "\n";
                 }
 
-#if 0
-                std::cout << "face id " << face.id() << "normal " << face.element0().normal(face.pos_first())
-                          <<  " ctx->normal(0) " << ctx->unitNormal()//ctx->normal()
-                          << "\n";
+                //std::cout << "face id " << face.id() << "normal " << face.element0().normal(face.pos_first())
+                //          <<  " ctx->normal(0) " << ctx->unitNormal()//ctx->normal()
+                //          << "\n";
 #endif
 
                 if ( doComputeHatThetaPhi[faceId][dof_thetaPhi] ) //valVdotN < 0 )
@@ -927,7 +966,7 @@ int main(int argc, char**argv )
                     //    wBCintegrate->set( dof_thetaPhi2,ULoc_thetaPhi[ dof_thetaPhi2 ]->operator()( thedof ) );
                     for( size_type dof_thetaPhi2=0 ; dof_thetaPhi2<Xh_thetaPhi->nDof() ; ++dof_thetaPhi2 )
                     {
-                        if ( /*false*/ !extrapUseBdf )
+                        if ( !extrapUseBdf )
                         {
                             //use solution at last time step
                             if ( dofIsUsed_thetaPhi[dof_thetaPhi2] )
@@ -992,23 +1031,20 @@ int main(int argc, char**argv )
 
                         if ( useSecondTermInBC )
                         {
+                            double bcIntegrate = inner_product(*mapOperatorDiffuseBC.find(faceId)->second,wBCintegrate->container());
+#if !defined(NDEBUG)
                             auto thetaPrime = Px();
                             auto phiPrime = Py();
                             auto vPrime = vSoundVelocity*vec( sin(thetaPrime)*cos(phiPrime), sin(thetaPrime)*sin(phiPrime), cos(thetaPrime) );
                             auto vPrimeDotN = vPrime(0,0)*unitNormal[0] + vPrime(1,0)*unitNormal[1] + vPrime(2,0)*unitNormal[2];
                             auto chiVPrimeDotN = chi( vPrimeDotN > cst(-1e-6) );
                             auto bcIntegrateExpr = (alpha*d_prob/(M_PI*vSoundVelocity))*vPrimeDotN*idv(wBCintegrate)*sin(thetaPrime);
-                            //auto bcIntegrateExpr = (alpha*d_prob/M_PI)*vPrimeDotN*idv(wBCintegrate)*sin(thetaPrime);
-                            double bcIntegrate = integrate(_range=elements(mesh_thetaPhi),
-                                                           _expr=bcIntegrateExpr*chiVPrimeDotN ).evaluate(false)(0,0);
+
+                            double bcIntegrate2 = integrate(_range=elements(mesh_thetaPhi),
+                                                            _expr=bcIntegrateExpr*chiVPrimeDotN ).evaluate(false)(0,0);
+                            CHECK( std::abs( bcIntegrate - bcIntegrate2 ) < 1e-8 ) << " error between opt " << bcIntegrate <<" and eval : " << bcIntegrate2 << "\n";
+#endif
                             projBCDirichlet->add( thedof, bcIntegrate );
-
-                            /*if ( dof_thetaPhi == 1 && std::abs(ublas::column(face.G(),0)[1] -6. ) < 1.1  && std::abs(ublas::column(face.G(),0)[2] - 0. ) < 1e-5 &&
-                              ublas::column(face.G(),0)[0] > 6 && ublas::column(face.G(),0)[0] < 10  )
-                              std::cout << " bcIntegrate " << bcIntegrate << "\n";*/
-
-                            // impose w as solution at last time step
-                            //projBCDirichlet->add( thedof, ULoc_thetaPhi[dof_thetaPhi]->operator()(thedof) );
                         }
 
 
@@ -1030,13 +1066,23 @@ int main(int argc, char**argv )
                 on(_range=myMarkedFacesBCRange,//boundaryfaces(mesh),
                    _rhs=rhs, _element=*ULoc, _expr=idv(projBCDirichlet) );
 
-                if ( Environment::isMasterRank() )
-                    std::cout << " assemblage bc done \n";
+            tElapsed = mytimer.elapsed();
+            if ( verbose && Environment::isMasterRank() )
+                std::cout << " assemblage bc done in " << tElapsed << "s\n";
 
+            //-----------------------------------------------------------------//
+            mytimer.restart();
             mybackend->solve(_matrix=mat, _rhs=rhs, _solution=USol,_prec=myprec );
             //if ( Environment::isMasterRank() )
             //    std::cout << " USol->l2Norm() " << USol->l2Norm() << "\n";
+
+            // copy algebraic vector into finite element function
             *ULoc_thetaPhi[dof_thetaPhi] = *USol;
+
+            tElapsed = mytimer.elapsed();
+            if ( verbose && Environment::isMasterRank() )
+                std::cout << " solve done in " << tElapsed << "s\n";
+
 
         } // dof_thetaPhi
 
@@ -1091,7 +1137,7 @@ int main(int argc, char**argv )
             myBdf[dof_thetaPhi]->next( *ULoc_thetaPhi[dof_thetaPhi] );
 
         //ULocIntegrateAllDirection->scale(1./(4*M_PI)/*dofToUse_thetaPhi.size()*/);
-        bdfEnergyDensity->next( *ULocIntegrateAllDirection );
+        //bdfEnergyDensity->next( *ULocIntegrateAllDirection );
         //ULocIntegrateAllDirection->scale(4*M_PI/*dofToUse_thetaPhi.size()*/);
         //bdfEnergyDensity->next( *ULocSumAllDirection );
 
