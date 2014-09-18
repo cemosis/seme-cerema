@@ -17,6 +17,7 @@ AcousticModel::AcousticModel()
 
     M_useOneMatVecByDirection = boption(_name="use-one-matvec-by-direction");
     M_useOneBackendByDirection = boption(_name="use-one-backend-by-direction");
+    M_hasBuildCstPart = false;
 
     this->createThetaPhi();
 
@@ -469,10 +470,12 @@ AcousticModel::solve()
                 std::cout << "dof_thetaPhi : " << ++cpt_dof_thetaPhi << "/" << M_dofToUseInThetaPhi.size() << std::flush;
             }
         }
-        M_mat[dofThetaPhi]->zero();
-        M_rhs[dofThetaPhi]->zero();
-        this->updateAssemblyTransportModel( M_mat[dofThetaPhi],M_rhs[dofThetaPhi],dofThetaPhi );
-        this->updateAssemblyBC( M_mat[dofThetaPhi],M_rhs[dofThetaPhi],dofThetaPhi );
+
+        //M_mat[dofThetaPhi]->zero();
+        //M_rhs[dofThetaPhi]->zero();
+
+        this->updateAssemblyTransportModel( M_mat[dofThetaPhi],M_rhs[dofThetaPhi],dofThetaPhi, !M_hasBuildCstPart );
+        this->updateAssemblyBC( M_mat[dofThetaPhi],M_rhs[dofThetaPhi],dofThetaPhi, !M_hasBuildCstPart );
 
         boost::mpi::timer mytimer;
 
@@ -495,6 +498,12 @@ AcousticModel::solve()
 
     } // for( size_type dof_thetaPhi : M_dofToUseInThetaPhi )
 
+    // optimisation in this case only
+    if ( M_useOneMatVecByDirection )
+        M_hasBuildCstPart=true;
+
+    if ( Environment::isMasterRank() && !M_verbose )
+        std::cout << "\n";
 
 
     // compute field of interest
@@ -520,8 +529,12 @@ AcousticModel::solve()
 
 
 void
-AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_ptrtype & rhs, size_type dofThetaPhi )
+AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_ptrtype & rhs, size_type dofThetaPhi, bool buildCstPart )
 {
+    if ( buildCstPart )
+        mat->zero();
+    rhs->zero();
+
     // vector transport direction
     std::vector<double> vDirection(3,0.);
     vDirection[0] = M_vxProj->operator()(dofThetaPhi);
@@ -534,9 +547,10 @@ AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_
     boost::mpi::timer mytimer;
    //mytimer.restart();
     // time discretisation and source term
-    form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
-        integrate(_range=elements(M_mesh),
-                  _expr=M_bdfDensity[dofThetaPhi]->polyDerivCoefficient(0)*idt(u)*id(u) );
+    if ( buildCstPart )
+        form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
+            integrate(_range=elements(M_mesh),
+                      _expr=M_bdfDensity[dofThetaPhi]->polyDerivCoefficient(0)*idt(u)*id(u) );
     auto polyDerivInTime = M_bdfDensity[dofThetaPhi]->polyDeriv();
     auto rhsExpr = idv(M_projSourceTerm)+idv(polyDerivInTime);
 
@@ -546,9 +560,10 @@ AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_
 
     // propagation term
     auto vDirExpr = vec( cst(vDirection[0]),cst(vDirection[1]),cst(vDirection[2]));
-    form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
-        integrate(_range=elements(M_mesh),
-                  _expr=gradt(u)*vDirExpr*id(u) );
+    if ( buildCstPart )
+        form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
+            integrate(_range=elements(M_mesh),
+                      _expr=gradt(u)*vDirExpr*id(u) );
 
     double tElapsed = mytimer.elapsed();
     if ( M_verbose && Environment::isMasterRank() )
@@ -563,9 +578,10 @@ AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_
         auto coeff = vf::h()/( 2*norm2( vDirExpr ) );
         auto residualStabForm2 = M_bdfDensity[dofThetaPhi]->polyDerivCoefficient(0)*idt(u) + gradt(u)*vDirExpr;
         auto residualStabForm1 = rhsExpr;//idv(polyDerivInTime);
-        form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
-            integrate(_range=elements(M_mesh),
-                      _expr= coeff*(grad(u)*vDirExpr)*residualStabForm2 );
+        if ( buildCstPart )
+            form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
+                integrate(_range=elements(M_mesh),
+                          _expr= coeff*(grad(u)*vDirExpr)*residualStabForm2 );
         form1(_test=M_Xh,_vector=rhs) +=
             integrate(_range=elements(M_mesh),
                       _expr=coeff*(grad(u)*vDirExpr)*residualStabForm1 );
@@ -577,7 +593,7 @@ AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_
 
 }
 void
-AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rhs, size_type dofThetaPhi )
+AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rhs, size_type dofThetaPhi, bool buildCstPart )
 {
     boost::mpi::timer mytimer;
 
@@ -593,6 +609,9 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
 
     auto wBCintegrate = M_XhThetaPhi->elementPtr();
 
+    // close rhs in this case
+    if ( !buildCstPart )
+        rhs->close();
 
     bool extrapUseBdf=false;
 
@@ -604,6 +623,7 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
         auto unitNormal = M_mapUnitNormalByFace[ faceId ];
         double valVdotN = vDirection[0]*unitNormal[0] + vDirection[1]*unitNormal[1] + vDirection[2]*unitNormal[2];
         if ( std::abs(valVdotN) < 1e-6 ) continue;
+        if ( !M_doComputeHatThetaPhi[faceId][dofThetaPhi] ) continue;
 
 
         if ( M_doComputeHatThetaPhi[faceId][dofThetaPhi] ) //valVdotN < 0 )
@@ -614,6 +634,7 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
             const size_type thedof = M_Xh->dof()->faceLocalToGlobal(face.id(),fDof,0).get<0>();
             if ( dofdone[thedof] ) continue;
 
+            // nodal projection of w(x,t,theta,phi) on x,t -> w(theta,phi;x,t)
             for( size_type dof_thetaPhi2=0 ; dof_thetaPhi2<M_XhThetaPhi->nDof() ; ++dof_thetaPhi2 )
             {
                 if ( !extrapUseBdf )
@@ -671,6 +692,9 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
                 }
 
 
+                if ( !buildCstPart )
+                    rhs->set( thedof,M_projBCDirichlet->operator()(thedof) );
+
             } // if M_doComputeHatThetaPhi
 
 
@@ -680,15 +704,19 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
 
     } // for ( auto const& face : boundaryfaces(mesh))
 
-    auto myMarkedFacesBCRange = boost::make_tuple( mpl::size_t<MESH_FACES>(),
-                                                   myelts->begin(),
-                                                   myelts->end(),
-                                                   myelts );
+    if ( buildCstPart )
+    {
+        auto myMarkedFacesBCRange = boost::make_tuple( mpl::size_t<MESH_FACES>(),
+                                                       myelts->begin(),
+                                                       myelts->end(),
+                                                       myelts );
 
-    // up mat and rhs for bc Dirichlet condition
-    form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
-        on(_range=myMarkedFacesBCRange,//boundaryfaces(mesh),
-           _rhs=rhs, _element=*M_ULoc_thetaPhi[dofThetaPhi], _expr=idv(M_projBCDirichlet) );
+        // up mat and rhs for bc Dirichlet condition
+        form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
+            on(_range=myMarkedFacesBCRange,
+               _rhs=rhs, _element=*M_ULoc_thetaPhi[dofThetaPhi], _expr=idv(M_projBCDirichlet) );
+
+    }
 
     double tElapsed = mytimer.elapsed();
     if ( M_verbose && Environment::isMasterRank() )
@@ -752,7 +780,7 @@ acousticModel_options()
         ( "use-storage-from-normal-boundary-faces", po::value<bool>()->default_value( true ), "use-storage-from-normal-boundary-faces" )
 
         ( "use-one-backend-by-direction", po::value<bool>()->default_value( false ), "use-one-backend-by-direction" )
-        ( "use-one-matvec-by-direction", po::value<bool>()->default_value( true ), "use-one-matvec-by-direction" )
+        ( "use-one-matvec-by-direction", po::value<bool>()->default_value( false ), "use-one-matvec-by-direction" )
 
 		;
 

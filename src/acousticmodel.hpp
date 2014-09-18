@@ -74,8 +74,8 @@ private :
     void createTransportFE();
     void createPrecomputeBC();
 
-    void updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_ptrtype &rhs,size_type dofThetaPhi );
-    void updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rhs, size_type dofThetaPhi );
+    void updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_ptrtype &rhs,size_type dofThetaPhi, bool buildCstPart);
+    void updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rhs, size_type dofThetaPhi, bool buildCstPart );
 private :
 
     bool M_verbose;
@@ -115,7 +115,7 @@ private :
     std::vector<sparse_matrix_ptrtype> M_mat;
     std::vector<vector_ptrtype> M_rhs;
     bool M_useOneMatVecByDirection, M_useOneBackendByDirection;
-
+    bool M_hasBuildCstPart;
 }; // class AcousticModel
 
 
