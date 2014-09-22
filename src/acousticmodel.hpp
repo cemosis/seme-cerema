@@ -114,6 +114,7 @@ private :
     std::vector<preconditioner_ptrtype> M_preconditioners;
     std::vector<sparse_matrix_ptrtype> M_mat;
     std::vector<vector_ptrtype> M_rhs;
+    std::vector<vector_ptrtype> M_solutionVec;
     bool M_useOneMatVecByDirection, M_useOneBackendByDirection;
     bool M_hasBuildCstPart;
 }; // class AcousticModel
