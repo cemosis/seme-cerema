@@ -17,7 +17,15 @@ AcousticModel::AcousticModel()
 
     M_useOneMatVecByDirection = boption(_name="use-one-matvec-by-direction");
     M_useOneBackendByDirection = boption(_name="use-one-backend-by-direction");
+    // M_useOneBackendByDirection=true implie M_useOneMatVecByDirection=true
+    if ( M_useOneBackendByDirection && !M_useOneMatVecByDirection )
+        M_useOneMatVecByDirection = true,
+
     M_hasBuildCstPart = false;
+
+    M_useSpecularBC = boption(_name="use-specular-bc");
+    M_useNonSpecularBC = boption(_name="use-nonspecular-bc");
+
 
     this->createThetaPhi();
 
@@ -27,12 +35,14 @@ void
 AcousticModel::createThetaPhi()
 {
     // in parallel start by master rank (write msh file), and load after others process
+    bool isRestart = boption(_name="bdf.restart");
     std::string fileNameMeshDescThetaPhi = Environment::expand( soption(_name="gmsh.filename-thetaPhi") );
-    if ( Environment::isMasterRank() )
+    if ( Environment::isMasterRank() && !isRestart )
         M_meshThetaPhi = Feel::loadMesh(_mesh=new mesh_thetaphi_type, _filename=fileNameMeshDescThetaPhi,
                                         _worldcomm=Environment::worldCommSeq());
+
     Environment::worldComm().barrier();
-    if ( !Environment::isMasterRank() )
+    if ( !Environment::isMasterRank() || isRestart )
     {
         std::string fileNameMshThetaPhi = fs::path( fileNameMeshDescThetaPhi ).stem().string()+".msh";
         //std::cout << "filename to load " << fileNameMshThetaPhi << "\n";
@@ -147,7 +157,7 @@ AcousticModel::createTransportFE()
     M_bdfDensity.resize( M_XhThetaPhi->nDof() );
     for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
         M_bdfDensity[dofThetaPhi] = bdf( _vm=Environment::vm(), _space=M_Xh,
-                                  _name=(boost::format("energy%1%-%2%_%3%")%dofThetaPhi %Environment::worldComm().rank() %Environment::worldComm().size() ).str());
+                                         _name=(boost::format("energy%1%-%2%_%3%")%dofThetaPhi %Environment::worldComm().rank() %Environment::worldComm().size() ).str());
 
     if ( Environment::isMasterRank() )
         std::cout << "Xh->nDof : = " << M_Xh->nDof() << std::endl;
@@ -335,7 +345,7 @@ AcousticModel::createPrecomputeBC()
 void
 AcousticModel::init()
 {
-    if ( M_bdfDensity[*M_dofToUseInThetaPhi.begin()]->isRestart() )
+    if ( this->isRestart() )
     {
         for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
         {
@@ -361,7 +371,16 @@ AcousticModel::init()
     //M_mat = backend()->newMatrix(_test=M_Xh,_trial=M_Xh);
     //M_rhs = backend()->newVector(M_Xh);
 
+    // vectors solution
+    M_solutionVec.resize( M_XhThetaPhi->nDof() );
+    for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
+    {
+        M_solutionVec[dofThetaPhi] = backend()->newVector(M_Xh);
+        *M_solutionVec[dofThetaPhi] = *M_ULoc_thetaPhi[dofThetaPhi];
+        M_solutionVec[dofThetaPhi]->close();
+    }
 
+    // matrix/rhs
     M_mat.resize( M_XhThetaPhi->nDof() );
     M_rhs.resize( M_XhThetaPhi->nDof() );
     if ( M_useOneMatVecByDirection )
@@ -371,19 +390,14 @@ AcousticModel::init()
             M_mat[dofThetaPhi] = backend()->newMatrix(_test=M_Xh,_trial=M_Xh);
             M_rhs[dofThetaPhi] = backend()->newVector(M_Xh);
         }
-
     }
     else
     {
-        auto mymat = backend()->newMatrix(_test=M_Xh,_trial=M_Xh);
-        auto myrhs = backend()->newVector(M_Xh);
-        for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
-        {
-            M_mat[dofThetaPhi] = mymat;
-            M_rhs[dofThetaPhi] = myrhs;
-        }
+        M_mat[*M_dofToUseInThetaPhi.begin()] = backend()->newMatrix(_test=M_Xh,_trial=M_Xh);
+        M_rhs[*M_dofToUseInThetaPhi.begin()] = backend()->newVector(M_Xh);
     }
 
+    // backends/preconditioners
     M_backends.resize( M_XhThetaPhi->nDof() );
     M_preconditioners.resize( M_XhThetaPhi->nDof() );
     if ( M_useOneBackendByDirection )
@@ -391,24 +405,22 @@ AcousticModel::init()
         for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
         {
             M_backends[dofThetaPhi] = backend_type::build( Environment::vm(), "", Environment::worldComm() );
-            M_preconditioners[dofThetaPhi] = preconditioner( _prefix=M_backends[dofThetaPhi]->prefix(),_matrix=M_mat[dofThetaPhi],_pc=M_backends[dofThetaPhi]->pcEnumType(),
+            size_type idMatVec = ( M_useOneMatVecByDirection )? dofThetaPhi : *M_dofToUseInThetaPhi.begin();
+            M_preconditioners[dofThetaPhi] = preconditioner( _prefix=M_backends[dofThetaPhi]->prefix(),_matrix=M_mat[idMatVec],_pc=M_backends[dofThetaPhi]->pcEnumType(),
                                                              _pcfactormatsolverpackage=M_backends[dofThetaPhi]->matSolverPackageEnumType(), _backend=M_backends[dofThetaPhi] );
+
         }
     }
     else
     {
-        auto mybackend = backend();
-        auto myprec = preconditioner( _prefix=mybackend->prefix(),_matrix=M_mat[*M_dofToUseInThetaPhi.begin()],_pc=mybackend->pcEnumType(),
-                                      _pcfactormatsolverpackage=mybackend->matSolverPackageEnumType(), _backend=mybackend );
-        for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
-        {
-            M_backends[dofThetaPhi] = mybackend;
-            M_preconditioners[dofThetaPhi] = myprec;
-        }
+        M_backends[*M_dofToUseInThetaPhi.begin()] = backend_type::build( Environment::vm(), "", Environment::worldComm() );//backend();
+        M_preconditioners[*M_dofToUseInThetaPhi.begin()] = preconditioner( _prefix=M_backends[*M_dofToUseInThetaPhi.begin()]->prefix(),_matrix=M_mat[*M_dofToUseInThetaPhi.begin()],
+                                                                           _pc=M_backends[*M_dofToUseInThetaPhi.begin()]->pcEnumType(),
+                                                                           _pcfactormatsolverpackage=M_backends[*M_dofToUseInThetaPhi.begin()]->matSolverPackageEnumType(),
+                                                                           _backend=M_backends[*M_dofToUseInThetaPhi.begin()] );
     }
 
-    //M_mat = M_backends[*M_dofToUseInThetaPhi.begin()]->newMatrix(_test=M_Xh,_trial=M_Xh);
-    //M_rhs = M_backends[*M_dofToUseInThetaPhi.begin()]->newVector(M_Xh);
+
 }
 
 bool
@@ -434,7 +446,8 @@ AcousticModel::exportResults( double time )
 {
     //M_exporter->step( time )->add( "sound-intensity-sum", *ULocSumAllDirection );
     M_exporter->step( time )->add( "sound-density", *M_ULocIntegrateAllDirection );
-    bool doExportSolForEachVecDir = false;
+    //std::cout << "M_ULocIntegrateAllDirection->l2Norm() " << M_ULocIntegrateAllDirection->l2Norm() << "\n";
+    bool doExportSolForEachVecDir = boption(_name="do-export-foreach-sol");//false;
     if ( doExportSolForEachVecDir )// (dof_thetaPhi % 5) == 0 )
         for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
             M_exporter->step(time)->add( (boost::format("sound-density%1%")%dofThetaPhi).str(), *(M_ULoc_thetaPhi[dofThetaPhi]) );
@@ -471,32 +484,29 @@ AcousticModel::solve()
             }
         }
 
-        //M_mat[dofThetaPhi]->zero();
-        //M_rhs[dofThetaPhi]->zero();
+        size_type idMatVec = ( M_useOneMatVecByDirection )? dofThetaPhi : *M_dofToUseInThetaPhi.begin();
+        size_type idBackend = ( M_useOneBackendByDirection )? dofThetaPhi : *M_dofToUseInThetaPhi.begin();
 
-        this->updateAssemblyTransportModel( M_mat[dofThetaPhi],M_rhs[dofThetaPhi],dofThetaPhi, !M_hasBuildCstPart );
-        this->updateAssemblyBC( M_mat[dofThetaPhi],M_rhs[dofThetaPhi],dofThetaPhi, !M_hasBuildCstPart );
+        this->updateAssemblyTransportModel( M_mat[idMatVec],M_rhs[idMatVec],dofThetaPhi, !M_hasBuildCstPart );
+        this->updateAssemblyBC( M_mat[idMatVec],M_rhs[idMatVec],dofThetaPhi, !M_hasBuildCstPart );
+
 
         boost::mpi::timer mytimer;
 
-        if ( M_useOneMatVecByDirection && !M_useOneBackendByDirection )
-        {
-            // a particular case
-#if 0
-            auto myprec = preconditioner( _prefix=M_backends[dofThetaPhi]->prefix(),_matrix=M_mat[dofThetaPhi],_pc=M_backends[dofThetaPhi]->pcEnumType(),
-                                          _pcfactormatsolverpackage=M_backends[dofThetaPhi]->matSolverPackageEnumType(), _backend=M_backends[dofThetaPhi],_rebuild=true );
-            M_backends[dofThetaPhi]->solve(_matrix=M_mat[dofThetaPhi], _rhs=M_rhs[dofThetaPhi], _solution=*M_ULoc_thetaPhi[dofThetaPhi],_prec=myprec);
-#endif
-            backend(_rebuild=true)->solve(_matrix=M_mat[dofThetaPhi], _rhs=M_rhs[dofThetaPhi], _solution=*M_ULoc_thetaPhi[dofThetaPhi]);
-        }
-        else
-            M_backends[dofThetaPhi]->solve(_matrix=M_mat[dofThetaPhi], _rhs=M_rhs[dofThetaPhi], _solution=*M_ULoc_thetaPhi[dofThetaPhi],_prec=M_preconditioners[dofThetaPhi] );
+        if (!M_useOneBackendByDirection)
+            M_preconditioners[idBackend]->setMatrix(M_mat[idMatVec]);
+
+        M_backends[idBackend]->solve(_matrix=M_mat[idMatVec], _rhs=M_rhs[idMatVec], _solution=M_solutionVec[dofThetaPhi],
+                                     _prec=M_preconditioners[idBackend] );
 
         double tElapsed = mytimer.elapsed();
         if ( M_verbose && Environment::isMasterRank() )
             std::cout << " solve done in " << tElapsed << "s\n";
 
     } // for( size_type dof_thetaPhi : M_dofToUseInThetaPhi )
+
+    for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
+        *M_ULoc_thetaPhi[dofThetaPhi] = *M_solutionVec[dofThetaPhi];
 
     // optimisation in this case only
     if ( M_useOneMatVecByDirection )
@@ -608,7 +618,7 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
     vDirection[2] = M_vzProj->operator()(dofThetaPhi);
 
     auto wBCintegrate = M_XhThetaPhi->elementPtr();
-
+    wBCintegrate->zero();
     // close rhs in this case
     if ( !buildCstPart )
         rhs->close();
@@ -624,7 +634,6 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
         double valVdotN = vDirection[0]*unitNormal[0] + vDirection[1]*unitNormal[1] + vDirection[2]*unitNormal[2];
         if ( std::abs(valVdotN) < 1e-6 ) continue;
         if ( !M_doComputeHatThetaPhi[faceId][dofThetaPhi] ) continue;
-
 
         if ( M_doComputeHatThetaPhi[faceId][dofThetaPhi] ) //valVdotN < 0 )
             myelts->push_back(boost::cref(face));
@@ -656,12 +665,10 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
             }
 
 
-            bool useFirstTermInBC = true;
-            bool useSecondTermInBC = true;
             if ( M_doComputeHatThetaPhi[faceId][dofThetaPhi] )//valVdotN < 0 )
             {
                 //boundary condition with d=0 : w(r,theta,phi,t)=-alpha*w(r,\hat{theta},\hat{phi},t)
-                if ( useFirstTermInBC )
+                if ( M_useSpecularBC )
                 {
                     double wHatThetaPhi = 0;
                     auto evalAtHatThetaPhi = evaluateFromContext( _context=*M_ctxEvalHatThetaPhi[faceId],
@@ -671,23 +678,25 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
                     // update projBCDirichlet at this dof
                     // warning : not minus!
                     M_projBCDirichlet->add( thedof, M_alpha*(1-M_d_prob)*wHatThetaPhi );
+                    //CHECK( M_alpha*(1-M_d_prob)*wHatThetaPhi  < 5e3 ) << "aie1  " << M_alpha*(1-M_d_prob)*wHatThetaPhi << "\n";
                 }
 
-                if ( useSecondTermInBC )
+                if ( M_useNonSpecularBC )
                 {
                     double bcIntegrate = inner_product(*M_mapOperatorDiffuseBC.find(faceId)->second,wBCintegrate->container());
 #if !defined(NDEBUG)
                     auto thetaPrime = Px();
                     auto phiPrime = Py();
-                    auto vPrime = vSoundVelocity*vec( sin(thetaPrime)*cos(phiPrime), sin(thetaPrime)*sin(phiPrime), cos(thetaPrime) );
+                    auto vPrime = M_vSoundVelocity*vec( sin(thetaPrime)*cos(phiPrime), sin(thetaPrime)*sin(phiPrime), cos(thetaPrime) );
                     auto vPrimeDotN = vPrime(0,0)*unitNormal[0] + vPrime(1,0)*unitNormal[1] + vPrime(2,0)*unitNormal[2];
                     auto chiVPrimeDotN = chi( vPrimeDotN > cst(-1e-6) );
-                    auto bcIntegrateExpr = (alpha*d_prob/(M_PI*vSoundVelocity))*vPrimeDotN*idv(wBCintegrate)*sin(thetaPrime);
+                    auto bcIntegrateExpr = (M_alpha*M_d_prob/(M_PI*M_vSoundVelocity))*vPrimeDotN*idv(wBCintegrate)*sin(thetaPrime);
 
                     double bcIntegrate2 = integrate(_range=elements(M_meshThetaPhi),
                                                     _expr=bcIntegrateExpr*chiVPrimeDotN ).evaluate(false)(0,0);
                     CHECK( std::abs( bcIntegrate - bcIntegrate2 ) < 1e-8 ) << " error between opt " << bcIntegrate <<" and eval : " << bcIntegrate2 << "\n";
 #endif
+                    //CHECK( bcIntegrate < 5e3 ) << "aie2  " << bcIntegrate << "\n";
                     M_projBCDirichlet->add( thedof, bcIntegrate );
                 }
 
@@ -696,7 +705,6 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
                     rhs->set( thedof,M_projBCDirichlet->operator()(thedof) );
 
             } // if M_doComputeHatThetaPhi
-
 
             dofdone[thedof] = true;
 
@@ -710,12 +718,11 @@ AcousticModel::updateAssemblyBC( sparse_matrix_ptrtype & mat,vector_ptrtype & rh
                                                        myelts->begin(),
                                                        myelts->end(),
                                                        myelts );
-
         // up mat and rhs for bc Dirichlet condition
         form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
             on(_range=myMarkedFacesBCRange,
-               _rhs=rhs, _element=*M_ULoc_thetaPhi[dofThetaPhi], _expr=idv(M_projBCDirichlet) );
-
+               _rhs=rhs, _element=*M_ULoc_thetaPhi[dofThetaPhi],
+               _expr=idv(M_projBCDirichlet) );
     }
 
     double tElapsed = mytimer.elapsed();
@@ -755,8 +762,8 @@ acousticModel_options()
 		//( "stab-rho", po::value<double>()->default_value( 0.25 ), "coeff" )
         ( "gmsh.filename-thetaPhi", po::value<std::string>(), "name for theta phi mesh" )
 
-		( "use-first-term-bc", po::value<bool>()->default_value( true ), "use specular bc" )
-		( "use-second-term-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
+		( "use-specular-bc", po::value<bool>()->default_value( true ), "use specular bc" )
+		( "use-nonspecular-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
 
 		( "use-source-as-initial-solution", po::value<bool>()->default_value( true ), "use-source-as-initial-solution" )
 

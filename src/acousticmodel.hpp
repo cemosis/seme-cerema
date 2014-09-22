@@ -117,6 +117,8 @@ private :
     std::vector<vector_ptrtype> M_solutionVec;
     bool M_useOneMatVecByDirection, M_useOneBackendByDirection;
     bool M_hasBuildCstPart;
+    bool M_useSpecularBC, M_useNonSpecularBC;
+
 }; // class AcousticModel
 
 
