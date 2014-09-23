@@ -65,6 +65,34 @@ Transfinite Volume {26} = {1,2,3,4,5,6,7,8};
 Recombine Volume {26};
 */
 
+/*
+Transfinite Line {1,3,8,10} = ysize/myh+1;// Using Progression 1.0;
+Transfinite Line {2,4,7,9} = xsize/myh+1;// Using Progression 1.0;
+Transfinite Line {11,12,13,14} = zsize/myh+1;// Using Progression 1.0;
+
+Transfinite Surface {6} = {1,2,3,4};
+Transfinite Surface {16} = {5,6,7,8};
+Transfinite Surface {18} = {5,8,4,1};
+Transfinite Surface {20} = {3,2,6,7};
+Transfinite Surface {22} = {3,7,4,8};
+Transfinite Surface {24} = {1,5,6,2};
+
+Transfinite Volume {26} = {1,2,3,4,5,6,7,8};
+
+
+useHexaedralElt=0;
+
+If ( useHexaedralElt )
+Recombine Surface {6};
+Recombine Surface {16};
+Recombine Surface {18};
+Recombine Surface {20};
+Recombine Surface {22};
+Recombine Surface {24};
+Recombine Volume {26};
+EndIf
+*/
+
 Physical Line("bordX") = {2};
 Physical Line("bordY") = {1};
 Physical Line("bordZ") = {12};

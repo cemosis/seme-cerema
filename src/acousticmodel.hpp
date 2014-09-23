@@ -68,6 +68,13 @@ public :
             *M_ULoc_thetaPhi[dofThetaPhi] = *M_ULocIntegrateAllDirection;
     }
 
+    template < typename ExprT >
+    void updateSoundSource( vf::Expr<ExprT> const& expr )
+    {
+        M_projSourceTerm->on( _range=elements(M_mesh),_expr=expr );
+    }
+
+
     void solve();
 private :
     void createThetaPhi();
@@ -95,6 +102,7 @@ private :
 
     std::vector<bdf_ptrtype> M_bdfDensity;
     export_ptrtype M_exporter;
+    bool M_doExportSolForEachVecDir;
 
     double M_vSoundVelocity;
     double M_refPressure;
@@ -103,6 +111,7 @@ private :
     double M_alpha;
     double M_d_prob;
 
+    double M_timeSchemeTheta;
 
     std::map<size_type, node_type> M_mapUnitNormalByFace;
     std::map<size_type,std::map<size_type,bool> > M_doComputeHatThetaPhi;

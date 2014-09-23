@@ -6,25 +6,29 @@ namespace Feel
 
 AcousticModel::AcousticModel()
 {
-    M_verbose = boption(_name="acoustic-model.verbose");
+    M_verbose = boption(_prefix="acoustic-model",_name="verbose");
 
-    M_vSoundVelocity = doption(_name="sound-velocity");
-    M_refPressure = doption(_name="reference-pressure");
-    M_airDensity = doption(_name="air-density");
-    M_M = doption(_name="coeff.M");
-    M_alpha = doption(_name="coeff.alpha");
-    M_d_prob = doption(_name="coeff.d-prob");//0.5;
+    M_vSoundVelocity = doption(_prefix="acoustic-model",_name="sound-velocity");
+    M_refPressure = doption(_prefix="acoustic-model",_name="reference-pressure");
+    M_airDensity = doption(_prefix="acoustic-model",_name="air-density");
+    M_M = doption(_prefix="acoustic-model",_name="coeff.M");
+    M_alpha = doption(_prefix="acoustic-model",_name="coeff.alpha");
+    M_d_prob = doption(_prefix="acoustic-model",_name="coeff.d-prob");//0.5;
 
-    M_useOneMatVecByDirection = boption(_name="use-one-matvec-by-direction");
-    M_useOneBackendByDirection = boption(_name="use-one-backend-by-direction");
+    M_doExportSolForEachVecDir = boption(_prefix="acoustic-model",_name="do-export-foreach-sol");
+
+    M_useOneMatVecByDirection = boption(_prefix="acoustic-model",_name="use-one-matvec-by-direction");
+    M_useOneBackendByDirection = boption(_prefix="acoustic-model",_name="use-one-backend-by-direction");
     // M_useOneBackendByDirection=true implie M_useOneMatVecByDirection=true
     if ( M_useOneBackendByDirection && !M_useOneMatVecByDirection )
         M_useOneMatVecByDirection = true,
 
     M_hasBuildCstPart = false;
 
-    M_useSpecularBC = boption(_name="use-specular-bc");
-    M_useNonSpecularBC = boption(_name="use-nonspecular-bc");
+    M_useSpecularBC = boption(_prefix="acoustic-model",_name="use-specular-bc");
+    M_useNonSpecularBC = boption(_prefix="acoustic-model",_name="use-nonspecular-bc");
+
+    M_timeSchemeTheta=doption(_prefix="acoustic-model",_name="time-scheme-theta");
 
 
     this->createThetaPhi();
@@ -139,8 +143,6 @@ AcousticModel::createTransportFE()
 {
     // build space
     M_Xh = space_type::New(_mesh=M_mesh);
-    //ULoc = Xh->elementPtr(); // ASUP
-    //ULocSumAllDirection = Xh->elementPtr();
     M_ULocIntegrateAllDirection = M_Xh->elementPtr();
     M_projBCDirichlet = M_Xh->elementPtr();
     M_projSourceTerm = M_Xh->elementPtr();
@@ -150,7 +152,6 @@ AcousticModel::createTransportFE()
     for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
     {
         M_ULoc_thetaPhi[dofThetaPhi] = M_Xh->elementPtr();
-        //*ULoc_thetaPhi[dofThetaPhi] = *ULoc;
     }
 
 
@@ -199,7 +200,7 @@ AcousticModel::createPrecomputeBC()
 
     size_type nBoundaryFaces = nelements(boundaryfaces(M_mesh),false);
     size_type cptBoundaryFaces = 0;
-    bool useStorageNormalBoundaryFaces= boption(_name="use-storage-from-normal-boundary-faces"); // )true;
+    bool useStorageNormalBoundaryFaces= boption(_prefix="acoustic-model",_name="use-storage-from-normal-boundary-faces"); // )true;
     for ( auto const& face : boundaryfaces(M_mesh) )
     {
         ++cptBoundaryFaces;
@@ -447,8 +448,7 @@ AcousticModel::exportResults( double time )
     //M_exporter->step( time )->add( "sound-intensity-sum", *ULocSumAllDirection );
     M_exporter->step( time )->add( "sound-density", *M_ULocIntegrateAllDirection );
     //std::cout << "M_ULocIntegrateAllDirection->l2Norm() " << M_ULocIntegrateAllDirection->l2Norm() << "\n";
-    bool doExportSolForEachVecDir = boption(_name="do-export-foreach-sol");//false;
-    if ( doExportSolForEachVecDir )// (dof_thetaPhi % 5) == 0 )
+    if ( M_doExportSolForEachVecDir )// (dof_thetaPhi % 5) == 0 )
         for( size_type dofThetaPhi : M_dofToUseInThetaPhi )
             M_exporter->step(time)->add( (boost::format("sound-density%1%")%dofThetaPhi).str(), *(M_ULoc_thetaPhi[dofThetaPhi]) );
 
@@ -573,7 +573,14 @@ AcousticModel::updateAssemblyTransportModel( sparse_matrix_ptrtype & mat,vector_
     if ( buildCstPart )
         form2(_test=M_Xh,_trial=M_Xh,_matrix=mat) +=
             integrate(_range=elements(M_mesh),
-                      _expr=gradt(u)*vDirExpr*id(u) );
+                      _expr=M_timeSchemeTheta*gradt(u)*vDirExpr*id(u) );
+
+        if ( std::abs(M_timeSchemeTheta-1)>1e-8 )
+        {
+            form1(_test=M_Xh,_vector=rhs)
+                += integrate(_range=elements(M_mesh),
+                             _expr=-(1.-M_timeSchemeTheta)*gradv(u)*vDirExpr*id(u) );
+        }
 
     double tElapsed = mytimer.elapsed();
     if ( M_verbose && Environment::isMasterRank() )
@@ -751,43 +758,38 @@ acousticModel_options()
 	po::options_description accousticoptions( "Accoustic options" );
 	accousticoptions.add_options()
 
-		( "coeff.M", po::value<double>()->default_value( 0.01 ), "atmospheric attenuation coefficient" )
-        ( "coeff.alpha", po::value<double>()->default_value( 0.5 ), "reflexion coefficient" )
-        ( "coeff.d-prob", po::value<double>()->default_value( 0.5 ), "probability that reflexion is non specular" )
-        ( "sound-velocity", po::value<double>()->default_value( 343 ), " sound velocity [m/s]" )
-        ( "air-density", po::value<double>()->default_value( 1.225 ), "air-density [kg/m^3]" )
-        ( "reference-pressure", po::value<double>()->default_value( 2e-5 ), "reference-pressure [Pa]" )
+		( "acoustic-model.coeff.M", po::value<double>()->default_value( 0.01 ), "atmospheric attenuation coefficient" )
+        ( "acoustic-model.coeff.alpha", po::value<double>()->default_value( 0.5 ), "reflexion coefficient" )
+        ( "acoustic-model.coeff.d-prob", po::value<double>()->default_value( 0.5 ), "probability that reflexion is non specular" )
+        ( "acoustic-model.sound-velocity", po::value<double>()->default_value( 343 ), " sound velocity [m/s]" )
+        ( "acoustic-model.air-density", po::value<double>()->default_value( 1.225 ), "air-density [kg/m^3]" )
+        ( "acoustic-model.reference-pressure", po::value<double>()->default_value( 2e-5 ), "reference-pressure [Pa]" )
 
-		( "stab", po::value<bool>()->default_value( true ), "use SUPG stab with fem solver" )
+		//( "stab", po::value<bool>()->default_value( true ), "use SUPG stab with fem solver" )
 		//( "stab-rho", po::value<double>()->default_value( 0.25 ), "coeff" )
         ( "gmsh.filename-thetaPhi", po::value<std::string>(), "name for theta phi mesh" )
 
-		( "use-specular-bc", po::value<bool>()->default_value( true ), "use specular bc" )
-		( "use-nonspecular-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
+		( "acoustic-model.use-specular-bc", po::value<bool>()->default_value( true ), "use specular bc" )
+		( "acoustic-model.use-nonspecular-bc", po::value<bool>()->default_value( true ), "use non specular bc" )
 
-		( "use-source-as-initial-solution", po::value<bool>()->default_value( true ), "use-source-as-initial-solution" )
 
-		( "scaling-coeff", po::value<double>()->default_value( 5. ), "coeff" )
-        ( "center_x", po::value<double>()->default_value( 1 ), "x-position of source" )
-        ( "center_y", po::value<double>()->default_value( 0.5 ), "y-position of source" )
-        ( "center_z", po::value<double>()->default_value( 0.5 ), "z-position of source" )
-        ( "radius", po::value<double>()->default_value( 0.1 ), "radius of source" )
+		( "acoustic-model.do-export-foreach-sol", po::value<bool>()->default_value( false ), "coeff" )
 
-		( "do-export-foreach-sol", po::value<bool>()->default_value( false ), "coeff" )
-
-        ( "extrapolation.use-bdf", po::value<bool>()->default_value( false ), "coeff" )
+        //( "extrapolation.use-bdf", po::value<bool>()->default_value( false ), "coeff" )
 
 
         ( "acoustic-model.verbose", po::value<bool>()->default_value( false ), "print some additional info" )
 
         ( "acoustic-model.export-propagation-vectors-in-geofile", po::value<bool>()->default_value( false ), "export propagation vectors in geofile" )
         ( "acoustic-model.export-specular-vectors-in-geofile", po::value<bool>()->default_value( false ), "export speculars vectors in geofile" )
-        ( "specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
+        ( "acoustic-model.specular-meshexport-nFaces", po::value<int>()->default_value( 1 ), "coeff" )
 
-        ( "use-storage-from-normal-boundary-faces", po::value<bool>()->default_value( true ), "use-storage-from-normal-boundary-faces" )
+        ( "acoustic-model.use-storage-from-normal-boundary-faces", po::value<bool>()->default_value( true ), "use-storage-from-normal-boundary-faces" )
 
-        ( "use-one-backend-by-direction", po::value<bool>()->default_value( false ), "use-one-backend-by-direction" )
-        ( "use-one-matvec-by-direction", po::value<bool>()->default_value( false ), "use-one-matvec-by-direction" )
+        ( "acoustic-model.use-one-backend-by-direction", po::value<bool>()->default_value( false ), "use-one-backend-by-direction" )
+        ( "acoustic-model.use-one-matvec-by-direction", po::value<bool>()->default_value( false ), "use-one-matvec-by-direction" )
+
+        ( "acoustic-model.time-scheme-theta", po::value<double>()->default_value( 1. ), "time-scheme-theta ( theta=1 -> Euler implicit, theta=0.5 -> Crank-Nickolson" )
 
 		;
 
